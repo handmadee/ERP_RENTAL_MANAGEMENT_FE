@@ -21,6 +21,8 @@ import {
   MenuItem,
   LinearProgress,
   Snackbar,
+  ToggleButtonGroup,
+  ToggleButton,
 } from '@mui/material';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import {
@@ -38,6 +40,11 @@ import {
   Info as InfoIcon,
   Warning as WarningIcon,
   Close as CloseIcon,
+  Search,
+  Clear,
+  Sort,
+  ArrowUpward,
+  ArrowDownward,
 } from '@mui/icons-material';
 import SwipeableViews from 'react-swipeable-views';
 import * as Yup from 'yup';
@@ -620,6 +627,7 @@ const CostumesPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(10);
+  const [searchQuery, setSearchQuery] = useState('');
 
   const handleScroll = (direction: 'left' | 'right') => {
     if (scrollRef.current) {
@@ -773,9 +781,19 @@ const CostumesPage: React.FC = () => {
     // Add more items here
   ];
 
-  const filteredCostumes = selectedCategory === 'all'
-    ? costumes
-    : costumes.filter((costume) => costume.category === categories.find(cat => cat.id === selectedCategory)?.name);
+  const filteredCostumes = costumes
+    .filter(costume => {
+      // First filter by category
+      const matchesCategory = selectedCategory === 'all' || 
+        costume.category === categories.find(cat => cat.id === selectedCategory)?.name;
+      
+      // Then filter by search query
+      const matchesSearch = searchQuery === '' ||
+        costume.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
+        costume.name.toLowerCase().includes(searchQuery.toLowerCase());
+      
+      return matchesCategory && matchesSearch;
+    });
 
   const sortedAndFilteredCostumes = filteredCostumes.sort((a, b) => {
     const factor = sortOrder === 'asc' ? 1 : -1;
@@ -935,6 +953,86 @@ const CostumesPage: React.FC = () => {
           </Stack>
         </motion.div>
       </Stack>
+
+      <Stack direction="row" spacing={2} mb={3}>
+        <TextField
+          fullWidth
+          placeholder="Tìm kiếm theo mã hoặc tên sản phẩm..."
+          value={searchQuery}
+          onChange={(e) => setSearchQuery(e.target.value)}
+          InputProps={{
+            startAdornment: (
+              <InputAdornment position="start">
+                <Search />
+              </InputAdornment>
+            ),
+            endAdornment: searchQuery && (
+              <InputAdornment position="end">
+                <IconButton size="small" onClick={() => setSearchQuery('')}>
+                  <Clear />
+                </IconButton>
+              </InputAdornment>
+            ),
+          }}
+          sx={{
+            maxWidth: 400,
+            '& .MuiOutlinedInput-root': {
+              borderRadius: 2,
+              bgcolor: 'background.paper',
+              '&:hover': {
+                '& > fieldset': {
+                  borderColor: theme.palette.primary.main,
+                },
+              },
+            },
+          }}
+        />
+        <Stack direction="row" spacing={1} alignItems="center">
+          <Typography variant="body2" color="text.secondary">
+            Sắp xếp theo:
+          </Typography>
+          <ToggleButtonGroup
+            value={sortBy}
+            exclusive
+            onChange={(e, newValue) => {
+              if (newValue) setSortBy(newValue);
+            }}
+            size="small"
+          >
+            <ToggleButton value="name">
+              <Tooltip title="Sắp xếp theo tên">
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                  <Sort />
+                  <Typography variant="body2">Tên</Typography>
+                </Stack>
+              </Tooltip>
+            </ToggleButton>
+            <ToggleButton value="price">
+              <Tooltip title="Sắp xếp theo giá">
+                <Stack direction="row" alignItems="center" spacing={0.5}>
+                  <Sort />
+                  <Typography variant="body2">Giá</Typography>
+                </Stack>
+              </Tooltip>
+            </ToggleButton>
+          </ToggleButtonGroup>
+          <IconButton
+            onClick={() => setSortOrder(order => order === 'asc' ? 'desc' : 'asc')}
+            size="small"
+          >
+            {sortOrder === 'asc' ? <ArrowUpward /> : <ArrowDownward />}
+          </IconButton>
+        </Stack>
+      </Stack>
+
+      {/* Show search results count */}
+      {searchQuery && (
+        <Box mb={2}>
+          <Typography variant="body2" color="text.secondary">
+            Tìm thấy {filteredCostumes.length} kết quả cho "{searchQuery}"
+          </Typography>
+        </Box>
+      )}
 
       <Box sx={{ position: 'relative', mb: 3 }}>
         <IconButton

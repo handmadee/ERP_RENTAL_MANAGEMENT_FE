@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -23,6 +23,9 @@ import {
   MenuItem,
   FormHelperText,
   Box,
+  Autocomplete,
+  Paper,
+  Divider,
 } from '@mui/material';
 import {
   Timeline,
@@ -38,6 +41,10 @@ import {
   Save,
   Delete,
   Add as AddIcon,
+  Search as SearchIcon,
+  QrCodeScanner,
+  Person,
+  ContentCopy,
 } from '@mui/icons-material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
@@ -57,6 +64,7 @@ export interface Order {
   customerPhone: string;
   customerEmail: string;
   date: string;
+  returnDate: string;
   status: 'pending' | 'active' | 'completed' | 'cancelled';
   total: number;
   items: OrderItem[];
@@ -103,6 +111,18 @@ const validationSchema = Yup.object({
   status: Yup.string().required('Trạng thái là bắt buộc'),
 });
 
+// Mock data for products and customers (replace with API calls later)
+const mockProducts = [
+  { code: 'WD001', name: 'Váy cưới công chúa', price: 2990000, inStock: 5 },
+  { code: 'WD002', name: 'Áo dài cưới', price: 2000000, inStock: 3 },
+  { code: 'WD003', name: 'Váy phụ dâu', price: 1500000, inStock: 8 },
+];
+
+const mockCustomers = [
+  { id: 'CUS001', name: 'Nguyễn Văn A', phone: '0123456789', email: 'nguyenvana@example.com', totalOrders: 3 },
+  { id: 'CUS002', name: 'Trần Thị B', phone: '0987654321', email: 'tranthib@example.com', totalOrders: 1 },
+];
+
 const OrderDialog: React.FC<OrderDialogProps> = ({
   open,
   onClose,
@@ -117,11 +137,23 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
     view: 'Chi tiết đơn hàng',
   }[mode];
 
+  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
+  const [productCode, setProductCode] = useState('');
+  const [showScanner, setShowScanner] = useState(false);
+
+  const handleCopyOrderId = () => {
+    if (order?.id) {
+      navigator.clipboard.writeText(order.id);
+      showToast.success('Đã sao chép mã đơn hàng');
+    }
+  };
+
   const initialValues: Order = {
     customerName: '',
     customerPhone: '',
     customerEmail: '',
-    date: new Date().toISOString(),
+    date: new Date().toISOString().split('T')[0],
+    returnDate: '',
     status: 'pending',
     items: [],
     total: 0,
@@ -144,6 +176,47 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
       onClose();
     },
   });
+
+  const handleCustomerSelect = (customer: any) => {
+    setSelectedCustomer(customer);
+    if (customer) {
+      formik.setValues({
+        ...formik.values,
+        customerName: customer.name,
+        customerPhone: customer.phone,
+        customerEmail: customer.email,
+      });
+    }
+  };
+
+  const handleProductCodeSubmit = () => {
+    const product = mockProducts.find(p => p.code === productCode);
+    if (product) {
+      const newItem = {
+        id: product.code,
+        name: product.name,
+        price: product.price,
+        quantity: 1,
+        subtotal: product.price,
+      };
+      formik.setFieldValue('items', [...formik.values.items, newItem]);
+      setProductCode('');
+      showToast.success('Đã thêm sản phẩm vào đơn hàng');
+    } else {
+      showToast.error('Không tìm thấy sản phẩm');
+    }
+  };
+
+  // Mock scanner function (replace with actual scanner implementation)
+  const handleScannerClick = () => {
+    setShowScanner(true);
+    // Simulate scanning a product code
+    setTimeout(() => {
+      setProductCode('WD001');
+      setShowScanner(false);
+      handleProductCodeSubmit();
+    }, 1000);
+  };
 
   const handleAddItem = () => {
     const newItem: OrderItem = {
@@ -189,7 +262,19 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
     >
       <DialogTitle>
         <Stack direction="row" alignItems="center" justifyContent="space-between">
-          <Typography variant="h6">{title}</Typography>
+          <Stack direction="row" alignItems="center" spacing={2}>
+            <Typography variant="h6">{title}</Typography>
+            {order?.id && (
+              <Button
+                size="small"
+                variant="outlined"
+                onClick={handleCopyOrderId}
+                startIcon={<ContentCopy />}
+              >
+                {order.id}
+              </Button>
+            )}
+          </Stack>
           <IconButton onClick={onClose} size="small">
             <Close />
           </IconButton>
@@ -199,50 +284,143 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
       <DialogContent dividers>
         <Box component="form" onSubmit={formik.handleSubmit}>
           <Grid container spacing={3}>
-            {/* Customer Information */}
+            {/* Customer Search Section */}
             <Grid item xs={12}>
               <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
                 Thông tin khách hàng
               </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    name="customerName"
-                    label="Tên khách hàng"
-                    value={formik.values.customerName}
-                    onChange={formik.handleChange}
-                    error={formik.touched.customerName && Boolean(formik.errors.customerName)}
-                    helperText={formik.touched.customerName && formik.errors.customerName}
-                    disabled={isView}
-                  />
+              <Stack spacing={2}>
+                <Autocomplete
+                  options={mockCustomers}
+                  getOptionLabel={(option) => `${option.name} - ${option.phone}`}
+                  onChange={(_, value) => handleCustomerSelect(value)}
+                  renderInput={(params) => (
+                    <TextField
+                      {...params}
+                      label="Tìm kiếm khách hàng"
+                      InputProps={{
+                        ...params.InputProps,
+                        startAdornment: (
+                          <>
+                            <InputAdornment position="start">
+                              <Person />
+                            </InputAdornment>
+                            {params.InputProps.startAdornment}
+                          </>
+                        ),
+                      }}
+                    />
+                  )}
+                  renderOption={(props, option) => (
+                    <li {...props}>
+                      <Stack spacing={1}>
+                        <Typography variant="subtitle2">{option.name}</Typography>
+                        <Stack
+                          direction="row"
+                          spacing={2}
+                          sx={{ color: 'text.secondary' }}
+                        >
+                          <Typography variant="body2">
+                            SĐT: {option.phone}
+                          </Typography>
+                          <Typography variant="body2">
+                            Số đơn: {option.totalOrders}
+                          </Typography>
+                        </Stack>
+                      </Stack>
+                    </li>
+                  )}
+                />
+
+                {/* Customer Details Form */}
+                <Grid container spacing={2}>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      name="customerName"
+                      label="Tên khách hàng"
+                      value={formik.values.customerName}
+                      onChange={formik.handleChange}
+                      error={formik.touched.customerName && Boolean(formik.errors.customerName)}
+                      helperText={formik.touched.customerName && formik.errors.customerName}
+                      disabled={isView}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      fullWidth
+                      name="customerPhone"
+                      label="Số điện thoại"
+                      value={formik.values.customerPhone}
+                      onChange={formik.handleChange}
+                      error={formik.touched.customerPhone && Boolean(formik.errors.customerPhone)}
+                      helperText={formik.touched.customerPhone && formik.errors.customerPhone}
+                      disabled={isView}
+                    />
+                  </Grid>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      name="customerEmail"
+                      label="Email"
+                      value={formik.values.customerEmail}
+                      onChange={formik.handleChange}
+                      error={formik.touched.customerEmail && Boolean(formik.errors.customerEmail)}
+                      helperText={formik.touched.customerEmail && formik.errors.customerEmail}
+                      disabled={isView}
+                    />
+                  </Grid>
                 </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    name="customerPhone"
-                    label="Số điện thoại"
-                    value={formik.values.customerPhone}
-                    onChange={formik.handleChange}
-                    error={formik.touched.customerPhone && Boolean(formik.errors.customerPhone)}
-                    helperText={formik.touched.customerPhone && formik.errors.customerPhone}
-                    disabled={isView}
-                  />
-                </Grid>
-                <Grid item xs={12}>
-                  <TextField
-                    fullWidth
-                    name="customerEmail"
-                    label="Email"
-                    value={formik.values.customerEmail}
-                    onChange={formik.handleChange}
-                    error={formik.touched.customerEmail && Boolean(formik.errors.customerEmail)}
-                    helperText={formik.touched.customerEmail && formik.errors.customerEmail}
-                    disabled={isView}
-                  />
-                </Grid>
-              </Grid>
+              </Stack>
             </Grid>
+
+            {/* Product Code Scanner Section */}
+            {!isView && (
+              <Grid item xs={12}>
+                <Paper variant="outlined" sx={{ p: 2 }}>
+                  <Stack spacing={2}>
+                    <Typography variant="subtitle1" fontWeight="bold">
+                      Thêm sản phẩm
+                    </Typography>
+                    <Stack direction="row" spacing={2}>
+                      <TextField
+                        fullWidth
+                        label="Mã sản phẩm"
+                        value={productCode}
+                        onChange={(e) => setProductCode(e.target.value)}
+                        onKeyPress={(e) => {
+                          if (e.key === 'Enter') {
+                            e.preventDefault();
+                            handleProductCodeSubmit();
+                          }
+                        }}
+                        InputProps={{
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <IconButton onClick={handleScannerClick}>
+                                <QrCodeScanner />
+                              </IconButton>
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                      <Button
+                        variant="contained"
+                        onClick={handleProductCodeSubmit}
+                        disabled={!productCode}
+                      >
+                        Thêm
+                      </Button>
+                    </Stack>
+                    {showScanner && (
+                      <Box sx={{ p: 2, textAlign: 'center' }}>
+                        <Typography>Đang quét mã sản phẩm...</Typography>
+                      </Box>
+                    )}
+                  </Stack>
+                </Paper>
+              </Grid>
+            )}
 
             {/* Order Items */}
             <Grid item xs={12}>
@@ -403,7 +581,7 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
             </Grid>
 
             {/* Order Timeline */}
-            {mode === 'view' && order?.timeline && (
+            {mode === 'view' && order?.timeline && order.timeline.length > 0 && (
               <Grid item xs={12}>
                 <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
                   Lịch sử đơn hàng
@@ -446,6 +624,41 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
                 onChange={formik.handleChange}
                 disabled={isView}
               />
+            </Grid>
+
+            {/* Order Dates Section */}
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                Thông tin thời gian
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    name="date"
+                    label="Ngày thuê"
+                    value={formik.values.date}
+                    onChange={formik.handleChange}
+                    InputLabelProps={{ shrink: true }}
+                    disabled={isView}
+                  />
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <TextField
+                    fullWidth
+                    type="date"
+                    name="returnDate"
+                    label="Ngày trả"
+                    value={formik.values.returnDate}
+                    onChange={formik.handleChange}
+                    InputLabelProps={{ shrink: true }}
+                    disabled={isView}
+                    error={formik.touched.returnDate && Boolean(formik.errors.returnDate)}
+                    helperText={formik.touched.returnDate && formik.errors.returnDate}
+                  />
+                </Grid>
+              </Grid>
             </Grid>
           </Grid>
         </Box>
