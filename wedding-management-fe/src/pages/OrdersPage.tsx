@@ -23,6 +23,7 @@ import {
   alpha,
   Fade,
   Grid,
+  Tooltip,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -36,24 +37,38 @@ import {
   LocalOffer,
   Assessment,
   Event,
+  ContentCopy,
+  Warning,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { showToast } from '@/components/common/Toast';
-import OrderDialog, { Order } from '@/components/orders/OrderDialog';
+import OrderDialog, { Order as DialogOrder } from '@/components/orders/OrderDialog';
+import * as Yup from 'yup';
 
 interface Order {
   id?: string;
   customerName: string;
+  customerPhone: string;
   customerEmail: string;
-  status: 'pending' | 'completed' | 'cancelled';
-  orderDate: string;
-  totalAmount: number;
+  date: string;
+  returnDate: string;
+  status: 'pending' | 'active' | 'completed' | 'cancelled';
+  total: number;
   items: Array<{
     id: string;
     name: string;
     quantity: number;
     price: number;
+    subtotal: number;
   }>;
+  deposit: number;
+  remainingAmount: number;
+  note: string;
+  timeline?: {
+    time: string;
+    status: string;
+    description: string;
+  }[];
 }
 
 const mockOrders: Order[] = [
@@ -63,7 +78,8 @@ const mockOrders: Order[] = [
     customerPhone: '0123456789',
     customerEmail: 'nguyenvana@example.com',
     date: '2023-12-01',
-    status: 'active',
+    returnDate: '2023-12-15',
+    status: 'active' as const,
     total: 4990000,
     items: [
       {
@@ -128,7 +144,8 @@ const mockOrders: Order[] = [
         status: 'completed',
         description: 'Hoàn thành đơn hàng'
       }
-    ]
+    ],
+    returnDate: '2023-12-10'
   }
 ];
 
@@ -146,6 +163,16 @@ const statusColors: Record<string, 'success' | 'warning' | 'error' | 'info'> = {
   cancelled: 'error',
 };
 
+const validationSchema = Yup.object({
+  returnDate: Yup.string()
+    .required('Ngày trả là bắt buộc')
+    .test('is-after-date', 'Ngày trả phải sau ngày thuê', function(value) {
+      const { date } = this.parent;
+      if (!date || !value) return true;
+      return new Date(value) > new Date(date);
+    }),
+});
+
 const OrdersPage: React.FC = () => {
   const theme = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
@@ -157,7 +184,7 @@ const OrdersPage: React.FC = () => {
   const [actionAnchorEl, setActionAnchorEl] = useState<null | HTMLElement>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState<'create' | 'edit' | 'view'>('create');
-  const [selectedOrderData, setSelectedOrderData] = useState<Order | undefined>();
+  const [selectedOrderData, setSelectedOrderData] = useState<DialogOrder | undefined>();
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage);
@@ -183,7 +210,7 @@ const OrdersPage: React.FC = () => {
 
   const handleActionClick = (event: React.MouseEvent<HTMLElement>, order: Order) => {
     setSelectedOrder(order);
-    setSelectedOrderData(order);
+    setSelectedOrderData(convertToDialogOrder(order));
     setActionAnchorEl(event.currentTarget);
   };
 
@@ -218,7 +245,12 @@ const OrdersPage: React.FC = () => {
     handleActionClose();
   };
 
-  const handleSubmitOrder = (values: Order) => {
+  const convertToDialogOrder = (order: Order): DialogOrder => ({
+    ...order,
+    status: order.status === 'active' ? 'pending' : order.status
+  });
+
+  const handleSubmitOrder = (values: DialogOrder) => {
     if (dialogMode === 'create') {
       // Handle create order
       console.log('Create order:', values);
@@ -460,7 +492,8 @@ const OrdersPage: React.FC = () => {
                 <TableRow>
                   <TableCell>Mã đơn hàng</TableCell>
                   <TableCell>Khách hàng</TableCell>
-                  <TableCell>Ngày đặt</TableCell>
+                  <TableCell>Ngày thuê</TableCell>
+                  <TableCell>Ngày trả</TableCell>
                   <TableCell>Trạng thái</TableCell>
                   <TableCell align="right">Tổng tiền</TableCell>
                   <TableCell align="right"></TableCell>
@@ -475,10 +508,27 @@ const OrdersPage: React.FC = () => {
                       '&:hover': {
                         backgroundColor: alpha(theme.palette.primary.main, 0.04),
                       },
+                      ...(order.status === 'active' && new Date(order.returnDate) <= new Date(Date.now() + 24 * 60 * 60 * 1000) && {
+                        backgroundColor: alpha(theme.palette.warning.main, 0.1),
+                        '&:hover': {
+                          backgroundColor: alpha(theme.palette.warning.main, 0.2),
+                        },
+                      }),
                     }}
                   >
                     <TableCell>
-                      <Typography variant="subtitle2">{order.id}</Typography>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        <Typography variant="subtitle2">{order.id}</Typography>
+                        <IconButton
+                          size="small"
+                          onClick={() => {
+                            navigator.clipboard.writeText(order.id || '');
+                            showToast.success('Đã sao chép mã đơn hàng');
+                          }}
+                        >
+                          <ContentCopy fontSize="small" />
+                        </IconButton>
+                      </Stack>
                     </TableCell>
                     <TableCell>
                       <Stack direction="row" alignItems="center" spacing={2}>
@@ -502,6 +552,16 @@ const OrdersPage: React.FC = () => {
                     </TableCell>
                     <TableCell>
                       {new Date(order.date).toLocaleDateString('vi-VN')}
+                    </TableCell>
+                    <TableCell>
+                      <Stack direction="row" spacing={1} alignItems="center">
+                        {new Date(order.returnDate).toLocaleDateString('vi-VN')}
+                        {order.status === 'active' && new Date(order.returnDate) <= new Date(Date.now() + 24 * 60 * 60 * 1000) && (
+                          <Tooltip title="Sắp đến hạn trả">
+                            <Warning fontSize="small" color="warning" />
+                          </Tooltip>
+                        )}
+                      </Stack>
                     </TableCell>
                     <TableCell>
                       <Chip
