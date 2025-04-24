@@ -1,4 +1,4 @@
-import React, { useState, useRef, useCallback } from 'react';
+import React, { useState, useRef, useCallback, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -23,7 +23,22 @@ import {
   Snackbar,
   ToggleButtonGroup,
   ToggleButton,
+  Tabs,
+  Tab,
+  Avatar,
+  Divider,
+  ImageList,
+  ImageListItem,
+  alpha,
 } from '@mui/material';
+import {
+  Timeline,
+  TimelineItem,
+  TimelineSeparator,
+  TimelineDot,
+  TimelineConnector,
+  TimelineContent,
+} from '@mui/lab';
 import { DataGrid, GridColDef } from '@mui/x-data-grid';
 import {
   Visibility,
@@ -45,12 +60,20 @@ import {
   Sort,
   ArrowUpward,
   ArrowDownward,
+  Check,
+  PhotoLibrary,
+  History,
+  Build,
+  ShoppingBag,
+  Info,
 } from '@mui/icons-material';
 import SwipeableViews from 'react-swipeable-views';
 import * as Yup from 'yup';
 import { useFormik } from 'formik';
 import { motion, AnimatePresence } from 'framer-motion';
 import { showToast } from '../components/common/Toast';
+import { format } from 'date-fns';
+import costumeService from '../services/costumeService';
 
 interface Category {
   id: string;
@@ -74,6 +97,19 @@ interface Costume {
   quantityRented: number;
   createdAt: string;
   updatedAt: string;
+  thumbnailUrl: string;
+  style: string;
+  condition: string;
+  colors: string[];
+  material: string;
+  quantityReserved: number;
+  totalRentals: number;
+  lastMaintenanceDate: string;
+  nextMaintenanceDate: string;
+  careInstructions: string;
+  notes: string;
+  imageUrls: string[];
+  features: string[];
 }
 
 const categories: Category[] = [
@@ -213,78 +249,185 @@ const CategoryDialog: React.FC<CategoryDialogProps> = ({
 };
 
 const CostumeDetail: React.FC<{ costume: Costume; onClose: () => void }> = ({ costume, onClose }) => {
+  const theme = useTheme();
+  const [activeTab, setActiveTab] = useState(0);
+
+  const tabs = [
+    { label: 'Thông tin chung', icon: <Info /> },
+    { label: 'Hình ảnh', icon: <PhotoLibrary /> },
+    { label: 'Lịch sử thuê', icon: <History /> }
+  ];
+
+  interface TabPanelProps {
+    children?: React.ReactNode;
+    index: number;
+    value: number;
+  }
+
+  function TabPanel(props: TabPanelProps) {
+    const { children, value, index, ...other } = props;
+    return (
+      <div
+        role="tabpanel"
+        hidden={value !== index}
+        id={`tabpanel-${index}`}
+        aria-labelledby={`tab-${index}`}
+        {...other}
+      >
+        {value === index && (
+          <Box sx={{ p: 3 }}>
+            {children}
+          </Box>
+        )}
+      </div>
+    );
+  }
+
   return (
-    <Dialog open={true} onClose={onClose} maxWidth="md" fullWidth>
+    <Dialog open={true} onClose={onClose} maxWidth="lg" fullWidth>
       <DialogTitle>
-        <Typography variant="h5" fontWeight="bold">
-          {costume.name}
-        </Typography>
+        <Stack direction="row" alignItems="center" spacing={2}>
+          <Avatar
+            src={costume.thumbnailUrl}
+            variant="rounded"
+            sx={{ width: 56, height: 56 }}
+          />
+          <Box>
+            <Typography variant="h5" fontWeight="bold">
+              {costume.name}
+            </Typography>
+            <Typography variant="subtitle2" color="text.secondary">
+              Mã: {costume.code}
+            </Typography>
+          </Box>
+        </Stack>
       </DialogTitle>
+
+      <Tabs
+        value={activeTab}
+        onChange={(e, newValue) => setActiveTab(newValue)}
+        variant="scrollable"
+        scrollButtons="auto"
+        sx={{ px: 2, borderBottom: 1, borderColor: 'divider' }}
+      >
+        {tabs.map((tab, index) => (
+          <Tab
+            key={index}
+            label={tab.label}
+            icon={tab.icon}
+            iconPosition="start"
+          />
+        ))}
+      </Tabs>
+
       <DialogContent>
-        <Grid container spacing={3}>
-          <Grid item xs={12} md={6}>
-            <img
-              src={costume.imageUrl}
-              alt={costume.name}
-              style={{ width: '100%', height: 'auto', borderRadius: 8 }}
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <Stack spacing={2}>
-              <Box>
-                <Typography variant="subtitle1" color="text.secondary">
-                  Danh mục
-                </Typography>
-                <Chip label={costume.category} color="primary" />
-              </Box>
-              <Box>
-                <Typography variant="subtitle1" color="text.secondary">
-                  Giá thuê
-                </Typography>
-                <Typography variant="h6">
-                  {new Intl.NumberFormat('vi-VN', {
-                    style: 'currency',
-                    currency: 'VND',
-                  }).format(costume.price)}
-                </Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle1" color="text.secondary">
-                  Kích thước
-                </Typography>
-                <Typography>{costume.size}</Typography>
-              </Box>
-              <Box>
-                <Typography variant="subtitle1" color="text.secondary">
-                  Trạng thái
-                </Typography>
-                <Chip
-                  label={
-                    costume.status === 'available'
-                      ? 'Có sẵn'
-                      : costume.status === 'rented'
-                      ? 'Đã cho thuê'
-                      : 'Bảo trì'
-                  }
-                  color={
-                    costume.status === 'available'
-                      ? 'success'
-                      : costume.status === 'rented'
-                      ? 'primary'
-                      : 'warning'
-                  }
-                />
-              </Box>
-              <Box>
-                <Typography variant="subtitle1" color="text.secondary">
+        <TabPanel value={activeTab} index={0}>
+          <Grid container spacing={3}>
+            <Grid item xs={12} md={6}>
+              <Stack spacing={3}>
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Thông tin cơ bản
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Danh mục
+                      </Typography>
+                      <Typography variant="body1">
+                        {costume.category}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Trạng thái
+                      </Typography>
+                      <Chip
+                        label={costume.status === 'available' ? 'Có sẵn' :
+                          costume.status === 'rented' ? 'Đang cho thuê' : 'Bảo trì'}
+                        color={costume.status === 'available' ? 'success' :
+                          costume.status === 'rented' ? 'primary' : 'warning'}
+                        size="small"
+                      />
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Kích thước
+                      </Typography>
+                      <Typography variant="body1">
+                        {costume.size}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Số lượng có sẵn
+                      </Typography>
+                      <Typography variant="body1">
+                        {costume.quantityAvailable}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </Paper>
+
+                <Paper sx={{ p: 2 }}>
+                  <Typography variant="h6" gutterBottom>
+                    Thông tin giá
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={12}>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Giá thuê
+                      </Typography>
+                      <Typography variant="h6" color="primary.main">
+                        {new Intl.NumberFormat('vi-VN', {
+                          style: 'currency',
+                          currency: 'VND'
+                        }).format(costume.price)}
+                      </Typography>
+                    </Grid>
+                  </Grid>
+                </Paper>
+              </Stack>
+            </Grid>
+
+            <Grid item xs={12} md={6}>
+              <Paper sx={{ p: 2 }}>
+                <Typography variant="h6" gutterBottom>
                   Mô tả
                 </Typography>
-                <Typography>{costume.description}</Typography>
-              </Box>
-            </Stack>
+                <Typography variant="body1">
+                  {costume.description}
+                </Typography>
+              </Paper>
+            </Grid>
           </Grid>
-        </Grid>
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={1}>
+          <ImageList cols={3} gap={16}>
+            {costume.imageUrls?.map((url, index) => (
+              <ImageListItem key={index}>
+                <img
+                  src={url}
+                  alt={`${costume.name} - ${index + 1}`}
+                  loading="lazy"
+                  style={{ borderRadius: 8 }}
+                />
+              </ImageListItem>
+            ))}
+          </ImageList>
+        </TabPanel>
+
+        <TabPanel value={activeTab} index={2}>
+          <Typography variant="body1" color="text.secondary" align="center">
+            Chức năng đang được phát triển
+          </Typography>
+        </TabPanel>
       </DialogContent>
+
+      <DialogActions>
+        <Button onClick={onClose}>Đóng</Button>
+      </DialogActions>
     </Dialog>
   );
 };
@@ -695,15 +838,15 @@ const CostumesPage: React.FC = () => {
             params.value === 'available'
               ? 'Có sẵn'
               : params.value === 'rented'
-              ? 'Đã cho thuê'
-              : 'Bảo trì'
+                ? 'Đã cho thuê'
+                : 'Bảo trì'
           }
           color={
             params.value === 'available'
               ? 'success'
               : params.value === 'rented'
-              ? 'primary'
-              : 'warning'
+                ? 'primary'
+                : 'warning'
           }
           size="small"
         />
@@ -777,6 +920,19 @@ const CostumesPage: React.FC = () => {
       quantityRented: 2,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
+      thumbnailUrl: 'https://example.com/thumbnail1.jpg',
+      style: 'Công chúa',
+      condition: 'new',
+      colors: ['Gold', 'Silver'],
+      material: 'Ren',
+      quantityReserved: 0,
+      totalRentals: 2,
+      lastMaintenanceDate: new Date().toISOString(),
+      nextMaintenanceDate: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+      careInstructions: 'Làm khô sau khi rửa',
+      notes: 'Đặc biệt quan trọng khi điều trị',
+      imageUrls: ['https://example.com/image1.jpg', 'https://example.com/image2.jpg'],
+      features: ['Đẹp', 'Sang trọng'],
     },
     // Add more items here
   ];
@@ -784,14 +940,14 @@ const CostumesPage: React.FC = () => {
   const filteredCostumes = costumes
     .filter(costume => {
       // First filter by category
-      const matchesCategory = selectedCategory === 'all' || 
+      const matchesCategory = selectedCategory === 'all' ||
         costume.category === categories.find(cat => cat.id === selectedCategory)?.name;
-      
+
       // Then filter by search query
       const matchesSearch = searchQuery === '' ||
         costume.code.toLowerCase().includes(searchQuery.toLowerCase()) ||
         costume.name.toLowerCase().includes(searchQuery.toLowerCase());
-      
+
       return matchesCategory && matchesSearch;
     });
 

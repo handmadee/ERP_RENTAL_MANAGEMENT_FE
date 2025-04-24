@@ -18,6 +18,8 @@ import * as yup from 'yup';
 import { motion } from 'framer-motion';
 import { showToast } from '@/components/common/Toast';
 import { Link, Navigate, useNavigate } from 'react-router-dom';
+import { authService } from '@/services/authService';
+import { useState } from 'react';
 
 interface LoginFormInputs {
   email: string;
@@ -27,8 +29,7 @@ interface LoginFormInputs {
 const schema = yup.object({
   email: yup
     .string()
-    .required('Email là bắt buộc')
-    .email('Email không hợp lệ'),
+    .required('Tên đăng nhập là bắt buộc'),
   password: yup
     .string()
     .required('Mật khẩu là bắt buộc')
@@ -39,7 +40,7 @@ const LoginPage: React.FC = () => {
   const theme = useTheme();
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = React.useState(false);
-
+  const [isLoading, setIsLoading] = useState(false);
   const {
     register,
     handleSubmit,
@@ -47,17 +48,25 @@ const LoginPage: React.FC = () => {
   } = useForm<LoginFormInputs>({
     resolver: yupResolver(schema),
   });
-
-  const onSubmit = (data: LoginFormInputs) => {
-    // TODO: Replace with actual API call
-    // Simulating successful login
-    localStorage.setItem('token', 'dummy-token');
-    showToast.success('Đăng nhập thành công!');
-    navigate('/dashboard');
+  const onSubmit = async (data: LoginFormInputs) => {
+    try {
+      setIsLoading(true);
+      const response = await authService.login(data.email, data.password);
+      console.log("🚀 ~ onSubmit ~ response:", response)
+      if (response.user.role == 'user') {
+        return showToast.error('Bạn không có quyền truy cập vào hệ thống');
+      }
+      authService.saveTokens(response.accessToken, response.refreshToken);
+      authService.saveUser(response.user);
+      showToast.success('Đăng nhập thành công!');
+      navigate('/dashboard');
+    } catch (error: any) {
+      showToast.error(error?.response?.data?.message || 'Đăng nhập thất bại');
+    } finally {
+      setIsLoading(false);
+    }
   };
-
-  // If already logged in, redirect to dashboard
-  if (localStorage.getItem('token')) {
+  if (authService.isAuthenticated()) {
     return <Navigate to="/dashboard" replace />;
   }
 
@@ -155,6 +164,7 @@ const LoginPage: React.FC = () => {
                 size="large"
                 type="submit"
                 variant="contained"
+                disabled={isLoading}
                 sx={{
                   background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
                   boxShadow: `0 8px 16px ${alpha(theme.palette.primary.main, 0.24)}`,
@@ -169,7 +179,7 @@ const LoginPage: React.FC = () => {
                   },
                 }}
               >
-                Đăng nhập
+                {isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
               </Button>
 
               <Stack

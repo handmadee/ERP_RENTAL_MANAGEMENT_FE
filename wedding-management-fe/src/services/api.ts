@@ -1,9 +1,9 @@
 import axios from 'axios';
+import { authService } from './authService';
 
-const baseURL = import.meta.env.VITE_API_URL || 'http://localhost:3000/api';
-
+// Create axios instance
 export const api = axios.create({
-  baseURL,
+  baseURL: import.meta.env.VITE_API_URL || 'http://localhost:8080/api',
   headers: {
     'Content-Type': 'application/json',
   },
@@ -12,7 +12,7 @@ export const api = axios.create({
 // Request interceptor
 api.interceptors.request.use(
   (config) => {
-    const token = localStorage.getItem('token');
+    const token = authService.getToken();
     if (token) {
       config.headers.Authorization = `Bearer ${token}`;
     }
@@ -27,10 +27,23 @@ api.interceptors.request.use(
 api.interceptors.response.use(
   (response) => response,
   async (error) => {
-    if (error.response?.status === 401) {
-      // Handle unauthorized access
-      localStorage.removeItem('token');
-      window.location.href = '/login';
+    const originalRequest = error.config;
+    if (error.response?.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const refreshToken = authService.getRefreshToken();
+        if (!refreshToken) {
+          throw new Error('No refresh token available');
+        }
+        const response = await authService.refreshToken(refreshToken);
+        originalRequest.headers.Authorization = `Bearer ${response.accessToken}`;
+        return api(originalRequest);
+      } catch (refreshError) {
+        authService.clearTokens();
+        window.location.href = '/auth/login';
+        return Promise.reject(refreshError);
+      }
     }
     return Promise.reject(error);
   }

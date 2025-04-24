@@ -19,12 +19,15 @@ import * as yup from 'yup';
 import { motion } from 'framer-motion';
 import { showToast } from '@/components/common/Toast';
 import { Link, useNavigate } from 'react-router-dom';
+import { authService } from '@/services/authService';
+import { useState } from 'react';
 
 interface RegisterFormInputs {
   fullName: string;
   email: string;
   password: string;
   confirmPassword: string;
+  secretCode: string;
 }
 
 const schema = yup.object({
@@ -44,6 +47,9 @@ const schema = yup.object({
     .string()
     .required('Xác nhận mật khẩu là bắt buộc')
     .oneOf([yup.ref('password')], 'Mật khẩu không khớp'),
+  secretCode: yup
+    .string()
+    .required('Mã bảo mật là bắt buộc'),
 }).required();
 
 const RegisterPage: React.FC = () => {
@@ -51,6 +57,7 @@ const RegisterPage: React.FC = () => {
   const navigate = useNavigate();
   const [showPassword, setShowPassword] = React.useState(false);
   const [showConfirmPassword, setShowConfirmPassword] = React.useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const {
     register,
@@ -60,10 +67,27 @@ const RegisterPage: React.FC = () => {
     resolver: yupResolver(schema),
   });
 
-  const onSubmit = (data: RegisterFormInputs) => {
-    console.log(data);
-    showToast.success('Đăng ký thành công!');
-    navigate('/dashboard');
+  const onSubmit = async (data: RegisterFormInputs) => {
+    try {
+      setIsLoading(true);
+      const response = await authService.register({
+        email: data.email,
+        password: data.password,
+        fullName: data.fullName,
+        secretCode: data.secretCode,
+      });
+
+      // Save user data and tokens
+      authService.saveTokens(response.accessToken, response.refreshToken);
+      authService.saveUser(response.user);
+
+      showToast.success('Đăng ký thành công!');
+      navigate('/dashboard');
+    } catch (error: any) {
+      showToast.error(error?.response?.data?.message || 'Đăng ký thất bại');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const containerVariants = {
@@ -206,11 +230,27 @@ const RegisterPage: React.FC = () => {
                 }}
               />
 
+              <TextField
+                fullWidth
+                label="Mã bảo mật"
+                {...register('secretCode')}
+                error={!!errors.secretCode}
+                helperText={errors.secretCode?.message}
+                sx={{
+                  '& .MuiOutlinedInput-root': {
+                    '&:hover fieldset': {
+                      borderColor: theme.palette.primary.main,
+                    },
+                  },
+                }}
+              />
+
               <Button
                 fullWidth
                 size="large"
                 type="submit"
                 variant="contained"
+                disabled={isLoading}
                 sx={{
                   background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
                   boxShadow: `0 8px 16px ${alpha(theme.palette.primary.main, 0.24)}`,
@@ -225,7 +265,7 @@ const RegisterPage: React.FC = () => {
                   },
                 }}
               >
-                Đăng ký
+                {isLoading ? 'Đang đăng ký...' : 'Đăng ký'}
               </Button>
 
               <Stack
