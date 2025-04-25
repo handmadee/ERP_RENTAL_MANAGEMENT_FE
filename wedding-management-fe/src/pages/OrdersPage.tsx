@@ -24,6 +24,8 @@ import {
   Fade,
   Grid,
   Tooltip,
+  CircularProgress,
+  Alert,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -39,152 +41,343 @@ import {
   Event,
   ContentCopy,
   Warning,
+  Inbox as InboxIcon,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { showToast } from '@/components/common/Toast';
 import OrderDialog, { Order as DialogOrder } from '@/components/orders/OrderDialog';
 import * as Yup from 'yup';
-
-interface Order {
-  id?: string;
-  customerName: string;
-  customerPhone: string;
-  customerEmail: string;
-  date: string;
-  returnDate: string;
-  status: 'pending' | 'active' | 'completed' | 'cancelled';
-  total: number;
-  items: Array<{
-    id: string;
-    name: string;
-    quantity: number;
-    price: number;
-    subtotal: number;
-  }>;
-  deposit: number;
-  remainingAmount: number;
-  note: string;
-  timeline?: {
-    time: string;
-    status: string;
-    description: string;
-  }[];
-}
-
-const mockOrders: Order[] = [
-  {
-    id: 'ORD-2023001',
-    customerName: 'Nguyễn Văn A',
-    customerPhone: '0123456789',
-    customerEmail: 'nguyenvana@example.com',
-    date: '2023-12-01',
-    returnDate: '2023-12-15',
-    status: 'active' as const,
-    total: 4990000,
-    items: [
-      {
-        id: 'ITEM001',
-        name: 'Váy cưới công chúa',
-        price: 2990000,
-        quantity: 1,
-        subtotal: 2990000
-      },
-      {
-        id: 'ITEM002',
-        name: 'Áo dài cưới',
-        price: 2000000,
-        quantity: 1,
-        subtotal: 2000000
-      }
-    ],
-    deposit: 2000000,
-    remainingAmount: 2990000,
-    note: 'Khách hẹn thử đồ vào tuần sau',
-    timeline: [
-      {
-        time: '2023-12-01T09:00:00',
-        status: 'created',
-        description: 'Tạo đơn hàng'
-      },
-      {
-        time: '2023-12-01T10:00:00',
-        status: 'active',
-        description: 'Đã xác nhận và đặt cọc'
-      }
-    ]
-  },
-  {
-    id: 'ORD-2023002',
-    customerName: 'Trần Thị B',
-    customerPhone: '0987654321',
-    customerEmail: 'tranthib@example.com',
-    date: '2023-12-02',
-    status: 'completed',
-    total: 2990000,
-    items: [
-      {
-        id: 'ITEM003',
-        name: 'Váy phụ dâu',
-        price: 2990000,
-        quantity: 1,
-        subtotal: 2990000
-      }
-    ],
-    deposit: 2990000,
-    remainingAmount: 0,
-    note: 'Đã hoàn thành và trả đồ',
-    timeline: [
-      {
-        time: '2023-12-02T09:00:00',
-        status: 'created',
-        description: 'Tạo đơn hàng'
-      },
-      {
-        time: '2023-12-02T10:00:00',
-        status: 'completed',
-        description: 'Hoàn thành đơn hàng'
-      }
-    ],
-    returnDate: '2023-12-10'
-  }
-];
+import orderService from '@/services/orderService';
+import { Order as BackendOrder, OrderFilters, ORDER_STATUS } from '@/types/order';
+import { CreateOrderDTO, UpdateOrderDTO } from '@/types/order';
 
 const statusLabels: Record<string, string> = {
-  pending: 'Chờ xử lý',
-  active: 'Đang thực hiện',
-  completed: 'Hoàn thành',
-  cancelled: 'Đã hủy',
+  [ORDER_STATUS.PENDING]: 'Chờ xử lý',
+  [ORDER_STATUS.ACTIVE]: 'Đang thực hiện',
+  [ORDER_STATUS.COMPLETED]: 'Hoàn thành',
+  [ORDER_STATUS.CANCELLED]: 'Đã hủy',
 };
 
 const statusColors: Record<string, 'success' | 'warning' | 'error' | 'info'> = {
-  active: 'warning',
-  completed: 'success',
-  pending: 'info',
-  cancelled: 'error',
+  [ORDER_STATUS.ACTIVE]: 'warning',
+  [ORDER_STATUS.COMPLETED]: 'success',
+  [ORDER_STATUS.PENDING]: 'info',
+  [ORDER_STATUS.CANCELLED]: 'error',
 };
 
 const validationSchema = Yup.object({
   returnDate: Yup.string()
     .required('Ngày trả là bắt buộc')
-    .test('is-after-date', 'Ngày trả phải sau ngày thuê', function(value) {
-      const { date } = this.parent;
-      if (!date || !value) return true;
-      return new Date(value) > new Date(date);
+    .test('is-after-date', 'Ngày trả phải sau ngày thuê', function (value) {
+      const { orderDate } = this.parent;
+      if (!orderDate || !value) return true;
+      return new Date(value) > new Date(orderDate);
     }),
+});
+
+interface OrderStats {
+  summary: {
+    totalOrders: number;
+    pendingOrders: number;
+    activeOrders: number;
+    completedOrders: number;
+    cancelledOrders: number;
+    monthlyRevenue: number;
+    avgOrderValue: number;
+    depositCollectionRate: string;
+  };
+  performance: {
+    orderCompletion: {
+      completed: number;
+      total: number;
+      rate: string;
+    };
+    financials: {
+      totalRevenue: number;
+      collectedAmount: number;
+      pendingAmount: number;
+      avgOrderValue: number;
+    };
+    customerMetrics: {
+      topCustomers: Array<{
+        customerInfo: {
+          customerCode: string;
+          fullName: string;
+          phone: string;
+          address?: string;
+          note?: string;
+        };
+        orderCount: number;
+        totalSpent: number;
+        avgOrderValue: number;
+        lastOrderDate: string;
+      }>;
+      topCostumes: Array<{
+        rentCount: number;
+        revenue: number;
+        avgPrice: number;
+      }>;
+    };
+  };
+  trends: {
+    daily: Array<{
+      date: string;
+      revenue: number;
+      orders: number;
+      deposits: number;
+      pending: number;
+    }>;
+    weekly: Array<{
+      period: string;
+      orderCount: number;
+      revenue: number;
+      avgOrderValue: number;
+    }>;
+    monthly: Array<{
+      period: string;
+      orderCount: number;
+      revenue: number;
+      avgOrderValue: number;
+    }>;
+  };
+  recentOrders: Array<{
+    orderCode: string;
+    customerName: string;
+    customerPhone: string;
+    orderDate: string;
+    returnDate: string;
+    status: string;
+    total: number;
+    deposit: number;
+    remainingAmount: number;
+    items: number;
+    createdBy: string;
+  }>;
+}
+
+interface OrderDetailsResponse {
+  orderDetails: {
+    _id: string;
+    orderCode: string;
+    customerId: {
+      customerCode: string;
+      fullName: string;
+      phone: string;
+      email?: string;
+      address?: string;
+    };
+    items: Array<{
+      costumeCode: string;
+      costumeName: string;
+      quantity: number;
+      price: number;
+      subtotal: number;
+      availability: {
+        total: number;
+        available: number;
+        rented: number;
+        percentageRented: string;
+      };
+    }>;
+    total: number;
+    deposit: number;
+    remainingAmount: number;
+    status: string;
+    orderDate: string;
+    returnDate: string;
+  };
+}
+
+const convertToDialogOrder = (order: BackendOrder): DialogOrder => ({
+  id: order._id,
+  customerName: order.customerName,
+  customerPhone: order.customerPhone,
+  customerEmail: order.customerEmail || '',
+  date: order.orderDate,
+  returnDate: order.returnDate,
+  status: order.status,
+  items: order.items.map(item => ({
+    id: item.costumeId,
+    name: '', // This will need to be filled with actual costume name
+    price: item.price,
+    quantity: item.quantity,
+    subtotal: item.subtotal
+  })),
+  total: order.total,
+  deposit: order.deposit,
+  remainingAmount: order.remainingAmount,
+  note: order.note || '',
+  timeline: order.timeline?.map(t => ({
+    time: t.date,
+    status: t.status,
+    description: t.note
+  }))
+});
+
+const convertToBackendOrder = (order: DialogOrder): Partial<BackendOrder> => ({
+  customerName: order.customerName,
+  customerPhone: order.customerPhone,
+  customerEmail: order.customerEmail,
+  orderDate: order.date,
+  returnDate: order.returnDate,
+  status: order.status,
+  items: order.items.map(item => ({
+    costumeId: item.id,
+    quantity: item.quantity,
+    price: item.price,
+    subtotal: item.subtotal
+  })),
+  total: order.total,
+  deposit: order.deposit,
+  remainingAmount: order.remainingAmount,
+  note: order.note
+});
+
+const convertToOrder = (orderDetails: OrderDetailsResponse['orderDetails']): BackendOrder => ({
+  _id: orderDetails._id,
+  orderCode: orderDetails.orderCode,
+  customerName: orderDetails.customerId.fullName,
+  customerPhone: orderDetails.customerId.phone,
+  customerEmail: orderDetails.customerId.email,
+  address: orderDetails.customerId.address,
+  orderDate: orderDetails.orderDate,
+  returnDate: orderDetails.returnDate,
+  items: orderDetails.items.map(item => ({
+    costumeId: item.costumeCode,
+    quantity: item.quantity,
+    price: item.price,
+    subtotal: item.subtotal
+  })),
+  total: orderDetails.total,
+  deposit: orderDetails.deposit,
+  remainingAmount: orderDetails.remainingAmount,
+  status: orderDetails.status as BackendOrder['status'],
+  timeline: [],
+  createdAt: new Date().toISOString(),
+  updatedAt: new Date().toISOString()
+});
+
+const convertToCreateDTO = (order: DialogOrder): CreateOrderDTO => ({
+  customerName: order.customerName,
+  customerPhone: order.customerPhone,
+  customerEmail: order.customerEmail,
+  orderDate: order.date,
+  returnDate: order.returnDate,
+  items: order.items.map(item => ({
+    costumeId: item.id,
+    quantity: item.quantity,
+    price: item.price
+  })),
+  total: order.total,
+  deposit: order.deposit,
+  remainingAmount: order.remainingAmount,
+  note: order.note,
+  status: order.status
+});
+
+const convertToUpdateDTO = (order: DialogOrder): UpdateOrderDTO => ({
+  customerName: order.customerName,
+  customerPhone: order.customerPhone,
+  orderDate: order.date,
+  returnDate: order.returnDate,
+  status: order.status,
+  deposit: order.deposit,
+  note: order.note
 });
 
 const OrdersPage: React.FC = () => {
   const theme = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState<string | null>(null);
+  const [statusFilter, setStatusFilter] = useState<ORDER_STATUS | null>(null);
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedOrder, setSelectedOrder] = useState<Order | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<BackendOrder | null>(null);
   const [actionAnchorEl, setActionAnchorEl] = useState<null | HTMLElement>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState<'create' | 'edit' | 'view'>('create');
-  const [selectedOrderData, setSelectedOrderData] = useState<DialogOrder | undefined>();
+  const [orders, setOrders] = useState<BackendOrder[]>([]);
+  const [totalOrders, setTotalOrders] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [stats, setStats] = useState<OrderStats>({
+    summary: {
+      totalOrders: 0,
+      pendingOrders: 0,
+      activeOrders: 0,
+      completedOrders: 0,
+      cancelledOrders: 0,
+      monthlyRevenue: 0,
+      avgOrderValue: 0,
+      depositCollectionRate: '0',
+    },
+    performance: {
+      orderCompletion: {
+        completed: 0,
+        total: 0,
+        rate: '0',
+      },
+      financials: {
+        totalRevenue: 0,
+        collectedAmount: 0,
+        pendingAmount: 0,
+        avgOrderValue: 0,
+      },
+      customerMetrics: {
+        topCustomers: [],
+        topCostumes: [],
+      },
+    },
+    trends: {
+      daily: [],
+      weekly: [],
+      monthly: [],
+    },
+    recentOrders: [],
+  });
+  const [statsLoading, setStatsLoading] = useState(true);
+
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+      const filters: OrderFilters = {
+        page: page + 1,
+        limit: rowsPerPage,
+        search: searchTerm,
+        status: statusFilter || undefined
+      };
+      const response = await orderService.getOrders(filters);
+      setOrders(response.data);
+      setTotalOrders(response.total);
+    } catch (error) {
+      showToast.error('Không thể tải danh sách đơn hàng');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const fetchStats = async () => {
+    try {
+      setStatsLoading(true);
+      const response = await orderService.getOrderStats();
+      console.log("🚀 ~ fetchStats ~ response:", response)
+      if (response) {
+        setStats(response);
+      }
+    } catch (error) {
+      console.error('Error fetching stats:', error);
+      showToast.error('Không thể tải thống kê đơn hàng');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    fetchOrders();
+  }, [page, rowsPerPage, searchTerm, statusFilter]);
+
+  useEffect(() => {
+    fetchStats();
+  }, []);
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage);
@@ -203,14 +396,14 @@ const OrdersPage: React.FC = () => {
     setFilterAnchorEl(null);
   };
 
-  const handleStatusFilterChange = (status: string | null) => {
+  const handleStatusFilterChange = (status: ORDER_STATUS | null) => {
     setStatusFilter(status);
+    setPage(0);
     handleFilterClose();
   };
 
-  const handleActionClick = (event: React.MouseEvent<HTMLElement>, order: Order) => {
+  const handleActionClick = (event: React.MouseEvent<HTMLElement>, order: BackendOrder) => {
     setSelectedOrder(order);
-    setSelectedOrderData(convertToDialogOrder(order));
     setActionAnchorEl(event.currentTarget);
   };
 
@@ -221,58 +414,69 @@ const OrdersPage: React.FC = () => {
 
   const handleCreateOrder = () => {
     setDialogMode('create');
-    setSelectedOrderData(undefined);
+    setSelectedOrder(null);
     setOpenDialog(true);
   };
 
-  const handleViewOrder = () => {
-    setDialogMode('view');
-    setOpenDialog(true);
+  const handleViewOrder = async () => {
+    if (selectedOrder?._id) {
+      try {
+        const orderDetails = await orderService.getOrderById(selectedOrder._id);
+        console.log("🚀 ~ handleViewOrder ~ orderDetails:", orderDetails)
+        setSelectedOrder(convertToOrder(orderDetails.orderDetails));
+        setDialogMode('view');
+        setOpenDialog(true);
+      } catch (error) {
+        showToast.error('Không thể tải thông tin đơn hàng');
+      }
+    }
     handleActionClose();
   };
 
-  const handleEditClick = (order: Order) => {
-    if (order?.id) {
-      setSelectedOrder(order);
-      setDialogMode('edit');
-      setOpenDialog(true);
-      handleActionClose();
+  const handleEditOrder = async () => {
+    if (selectedOrder?._id) {
+      try {
+        const orderDetails = await orderService.getOrderById(selectedOrder._id);
+        setSelectedOrder(convertToOrder(orderDetails.orderDetails));
+        setDialogMode('edit');
+        setOpenDialog(true);
+      } catch (error) {
+        showToast.error('Không thể tải thông tin đơn hàng');
+      }
     }
-  };
-
-  const handleDeleteOrder = () => {
-    showToast.error('Đã xóa đơn hàng ' + selectedOrder?.id);
     handleActionClose();
   };
 
-  const convertToDialogOrder = (order: Order): DialogOrder => ({
-    ...order,
-    status: order.status === 'active' ? 'pending' : order.status
-  });
-
-  const handleSubmitOrder = (values: DialogOrder) => {
-    if (dialogMode === 'create') {
-      // Handle create order
-      console.log('Create order:', values);
-    } else {
-      // Handle update order
-      console.log('Update order:', values);
+  const handleDeleteOrder = async () => {
+    if (selectedOrder?._id) {
+      try {
+        await orderService.deleteOrder(selectedOrder._id);
+        showToast.success('Xóa đơn hàng thành công');
+        fetchOrders();
+        fetchStats();
+      } catch (error) {
+        showToast.error('Không thể xóa đơn hàng');
+      }
     }
+    handleActionClose();
   };
 
-  const filteredOrders = mockOrders.filter(order => {
-    const matchesSearch = 
-      order.customerName.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.id?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      order.customerEmail.toLowerCase().includes(searchTerm.toLowerCase());
-    const matchesStatus = !statusFilter || order.status === statusFilter;
-    return matchesSearch && matchesStatus;
-  });
-
-  const displayedOrders = filteredOrders.slice(
-    page * rowsPerPage,
-    page * rowsPerPage + rowsPerPage
-  );
+  const handleSubmitOrder = async (values: DialogOrder) => {
+    try {
+      if (dialogMode === 'create') {
+        await orderService.createOrder(convertToCreateDTO(values));
+        showToast.success('Tạo đơn hàng thành công');
+      } else if (dialogMode === 'edit' && selectedOrder?._id) {
+        await orderService.updateOrder(selectedOrder._id, convertToUpdateDTO(values));
+        showToast.success('Cập nhật đơn hàng thành công');
+      }
+      setOpenDialog(false);
+      fetchOrders();
+      fetchStats();
+    } catch (error) {
+      showToast.error('Có lỗi xảy ra khi xử lý đơn hàng');
+    }
+  };
 
   return (
     <Box sx={{ py: 3 }}>
@@ -331,7 +535,21 @@ const OrdersPage: React.FC = () => {
                 <Typography color="text.secondary" variant="body2">
                   Tổng số đơn hàng
                 </Typography>
-                <Typography variant="h5">{mockOrders.length}</Typography>
+                {statsLoading ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <>
+                    <Typography variant="h5">
+                      {stats?.summary?.totalOrders || 0}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Giá trị TB: {new Intl.NumberFormat('vi-VN', {
+                        style: 'currency',
+                        currency: 'VND',
+                      }).format(stats?.summary?.avgOrderValue || 0)}
+                    </Typography>
+                  </>
+                )}
               </Box>
             </Card>
           </Grid>
@@ -363,9 +581,18 @@ const OrdersPage: React.FC = () => {
                 <Typography color="text.secondary" variant="body2">
                   Đơn chờ xử lý
                 </Typography>
-                <Typography variant="h5">
-                  {mockOrders.filter((order) => order.status === 'pending').length}
-                </Typography>
+                {statsLoading ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <>
+                    <Typography variant="h5">
+                      {stats?.summary?.pendingOrders || 0}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Hoàn thành: {stats?.performance?.orderCompletion?.rate || '0'}%
+                    </Typography>
+                  </>
+                )}
               </Box>
             </Card>
           </Grid>
@@ -397,16 +624,21 @@ const OrdersPage: React.FC = () => {
                 <Typography color="text.secondary" variant="body2">
                   Doanh thu tháng
                 </Typography>
-                <Typography variant="h5">
-                  {new Intl.NumberFormat('vi-VN', {
-                    style: 'currency',
-                    currency: 'VND',
-                  }).format(
-                    mockOrders
-                      .filter((order) => order.status === 'completed')
-                      .reduce((sum, order) => sum + order.total, 0)
-                  )}
-                </Typography>
+                {statsLoading ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <>
+                    <Typography variant="h5">
+                      {new Intl.NumberFormat('vi-VN', {
+                        style: 'currency',
+                        currency: 'VND',
+                      }).format(stats?.summary?.monthlyRevenue || 0)}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Thu cọc: {stats?.summary?.depositCollectionRate || '0'}%
+                    </Typography>
+                  </>
+                )}
               </Box>
             </Card>
           </Grid>
@@ -438,9 +670,18 @@ const OrdersPage: React.FC = () => {
                 <Typography color="text.secondary" variant="body2">
                   Đơn hủy
                 </Typography>
-                <Typography variant="h5">
-                  {mockOrders.filter((order) => order.status === 'cancelled').length}
-                </Typography>
+                {statsLoading ? (
+                  <CircularProgress size={20} />
+                ) : (
+                  <>
+                    <Typography variant="h5">
+                      {stats?.summary?.cancelledOrders || 0}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      Đang hoạt động: {stats?.summary?.activeOrders || 0}
+                    </Typography>
+                  </>
+                )}
               </Box>
             </Card>
           </Grid>
@@ -500,115 +741,141 @@ const OrdersPage: React.FC = () => {
                 </TableRow>
               </TableHead>
               <TableBody>
-                {displayedOrders.map((order) => (
-                  <TableRow
-                    key={order.id}
-                    hover
-                    sx={{
-                      '&:hover': {
-                        backgroundColor: alpha(theme.palette.primary.main, 0.04),
-                      },
-                      ...(order.status === 'active' && new Date(order.returnDate) <= new Date(Date.now() + 24 * 60 * 60 * 1000) && {
-                        backgroundColor: alpha(theme.palette.warning.main, 0.1),
-                        '&:hover': {
-                          backgroundColor: alpha(theme.palette.warning.main, 0.2),
-                        },
-                      }),
-                    }}
-                  >
-                    <TableCell>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        <Typography variant="subtitle2">{order.id}</Typography>
-                        <IconButton
-                          size="small"
-                          onClick={() => {
-                            navigator.clipboard.writeText(order.id || '');
-                            showToast.success('Đã sao chép mã đơn hàng');
-                          }}
-                        >
-                          <ContentCopy fontSize="small" />
-                        </IconButton>
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" alignItems="center" spacing={2}>
-                        <Avatar
-                          alt={order.customerName}
-                          sx={{
-                            bgcolor: theme.palette.primary.main,
-                          }}
-                        >
-                          {order.customerName.charAt(0)}
-                        </Avatar>
-                        <Box>
-                          <Typography variant="subtitle2">
-                            {order.customerName}
-                          </Typography>
-                          <Typography variant="body2" color="text.secondary">
-                            {order.items.length} sản phẩm
-                          </Typography>
-                        </Box>
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      {new Date(order.date).toLocaleDateString('vi-VN')}
-                    </TableCell>
-                    <TableCell>
-                      <Stack direction="row" spacing={1} alignItems="center">
-                        {new Date(order.returnDate).toLocaleDateString('vi-VN')}
-                        {order.status === 'active' && new Date(order.returnDate) <= new Date(Date.now() + 24 * 60 * 60 * 1000) && (
-                          <Tooltip title="Sắp đến hạn trả">
-                            <Warning fontSize="small" color="warning" />
-                          </Tooltip>
-                        )}
-                      </Stack>
-                    </TableCell>
-                    <TableCell>
-                      <Chip
-                        label={statusLabels[order.status]}
-                        color={statusColors[order.status]}
-                        size="small"
-                        sx={{
-                          minWidth: 100,
-                          '& .MuiChip-label': {
-                            px: 1,
-                          },
-                        }}
-                      />
-                    </TableCell>
-                    <TableCell align="right">
-                      {new Intl.NumberFormat('vi-VN', {
-                        style: 'currency',
-                        currency: 'VND',
-                      }).format(order.total)}
-                    </TableCell>
-                    <TableCell align="right">
-                      <IconButton
-                        size="small"
-                        onClick={(e) => handleActionClick(e, order)}
-                      >
-                        <MoreVert fontSize="small" />
-                      </IconButton>
+                {loading ? (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 3 }}>
+                      <CircularProgress />
                     </TableCell>
                   </TableRow>
-                ))}
+                ) : orders && orders.length > 0 ? (
+                  orders.map((order) => (
+                    <TableRow
+                      key={order._id}
+                      hover
+                      sx={{
+                        '&:hover': {
+                          backgroundColor: alpha(theme.palette.primary.main, 0.04),
+                        },
+                        ...(order.status === ORDER_STATUS.ACTIVE && new Date(order.returnDate) <= new Date(Date.now() + 24 * 60 * 60 * 1000) && {
+                          backgroundColor: alpha(theme.palette.warning.main, 0.1),
+                          '&:hover': {
+                            backgroundColor: alpha(theme.palette.warning.main, 0.2),
+                          },
+                        }),
+                      }}
+                    >
+                      <TableCell>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          <Typography variant="subtitle2">{order.orderCode}</Typography>
+                          <IconButton
+                            size="small"
+                            onClick={() => {
+                              navigator.clipboard.writeText(order.orderCode);
+                              showToast.success('Đã sao chép mã đơn hàng');
+                            }}
+                          >
+                            <ContentCopy fontSize="small" />
+                          </IconButton>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" alignItems="center" spacing={2}>
+                          <Avatar
+                            alt={order.customerName}
+                            sx={{
+                              bgcolor: theme.palette.primary.main,
+                            }}
+                          >
+                            {order.customerName.charAt(0)}
+                          </Avatar>
+                          <Box>
+                            <Typography variant="subtitle2">
+                              {order.customerName}
+                            </Typography>
+                            <Typography variant="body2" color="text.secondary">
+                              {order.items.length} sản phẩm
+                            </Typography>
+                          </Box>
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        {new Date(order.orderDate).toLocaleDateString('vi-VN')}
+                      </TableCell>
+                      <TableCell>
+                        <Stack direction="row" spacing={1} alignItems="center">
+                          {new Date(order.returnDate).toLocaleDateString('vi-VN')}
+                          {order.status === ORDER_STATUS.ACTIVE && new Date(order.returnDate) <= new Date(Date.now() + 24 * 60 * 60 * 1000) && (
+                            <Tooltip title="Sắp đến hạn trả">
+                              <Warning fontSize="small" color="warning" />
+                            </Tooltip>
+                          )}
+                        </Stack>
+                      </TableCell>
+                      <TableCell>
+                        <Chip
+                          label={statusLabels[order.status]}
+                          color={statusColors[order.status]}
+                          size="small"
+                          sx={{
+                            minWidth: 100,
+                            '& .MuiChip-label': {
+                              px: 1,
+                            },
+                          }}
+                        />
+                      </TableCell>
+                      <TableCell align="right">
+                        {new Intl.NumberFormat('vi-VN', {
+                          style: 'currency',
+                          currency: 'VND',
+                        }).format(order.total)}
+                      </TableCell>
+                      <TableCell align="right">
+                        <IconButton
+                          size="small"
+                          onClick={(e) => handleActionClick(e, order)}
+                        >
+                          <MoreVert fontSize="small" />
+                        </IconButton>
+                      </TableCell>
+                    </TableRow>
+                  ))
+                ) : (
+                  <TableRow>
+                    <TableCell colSpan={7} align="center" sx={{ py: 8 }}>
+                      <Box sx={{ textAlign: 'center' }}>
+                        <InboxIcon sx={{ fontSize: 60, color: 'text.secondary', mb: 2 }} />
+                        <Typography variant="h6" color="text.secondary" gutterBottom>
+                          Không có đơn hàng nào
+                        </Typography>
+                        <Typography variant="body2" color="text.secondary">
+                          {searchTerm || statusFilter
+                            ? 'Không tìm thấy đơn hàng nào phù hợp với điều kiện tìm kiếm'
+                            : 'Chưa có đơn hàng nào được tạo'}
+                        </Typography>
+                      </Box>
+                    </TableCell>
+                  </TableRow>
+                )}
               </TableBody>
             </Table>
           </TableContainer>
 
-          <TablePagination
-            component="div"
-            count={filteredOrders.length}
-            page={page}
-            onPageChange={handleChangePage}
-            rowsPerPage={rowsPerPage}
-            onRowsPerPageChange={handleChangeRowsPerPage}
-            rowsPerPageOptions={[5, 10, 25]}
-            labelRowsPerPage="Hiển thị"
-            labelDisplayedRows={({ from, to, count }) =>
-              `${from}-${to} của ${count}`
-            }
-          />
+          {orders && orders.length > 0 && (
+            <TablePagination
+              component="div"
+              count={totalOrders}
+              page={page}
+              onPageChange={handleChangePage}
+              rowsPerPage={rowsPerPage}
+              onRowsPerPageChange={handleChangeRowsPerPage}
+              rowsPerPageOptions={[5, 10, 25]}
+              labelRowsPerPage="Hiển thị"
+              labelDisplayedRows={({ from, to, count }) =>
+                `${from}-${to} của ${count}`
+              }
+            />
+          )}
         </Card>
       </motion.div>
 
@@ -625,26 +892,26 @@ const OrdersPage: React.FC = () => {
           Tất cả trạng thái
         </MenuItem>
         <MenuItem
-          selected={statusFilter === 'active'}
-          onClick={() => handleStatusFilterChange('active')}
+          selected={statusFilter === ORDER_STATUS.ACTIVE}
+          onClick={() => handleStatusFilterChange(ORDER_STATUS.ACTIVE)}
         >
           Đang thực hiện
         </MenuItem>
         <MenuItem
-          selected={statusFilter === 'completed'}
-          onClick={() => handleStatusFilterChange('completed')}
+          selected={statusFilter === ORDER_STATUS.COMPLETED}
+          onClick={() => handleStatusFilterChange(ORDER_STATUS.COMPLETED)}
         >
           Hoàn thành
         </MenuItem>
         <MenuItem
-          selected={statusFilter === 'pending'}
-          onClick={() => handleStatusFilterChange('pending')}
+          selected={statusFilter === ORDER_STATUS.PENDING}
+          onClick={() => handleStatusFilterChange(ORDER_STATUS.PENDING)}
         >
           Chờ xử lý
         </MenuItem>
         <MenuItem
-          selected={statusFilter === 'cancelled'}
-          onClick={() => handleStatusFilterChange('cancelled')}
+          selected={statusFilter === ORDER_STATUS.CANCELLED}
+          onClick={() => handleStatusFilterChange(ORDER_STATUS.CANCELLED)}
         >
           Đã hủy
         </MenuItem>
@@ -660,7 +927,7 @@ const OrdersPage: React.FC = () => {
           <Visibility fontSize="small" sx={{ mr: 2 }} />
           Xem chi tiết
         </MenuItem>
-        <MenuItem onClick={() => selectedOrder && handleEditClick(selectedOrder)}>
+        <MenuItem onClick={handleEditOrder}>
           <EditIcon fontSize="small" sx={{ mr: 2 }} />
           Chỉnh sửa
         </MenuItem>
@@ -673,7 +940,7 @@ const OrdersPage: React.FC = () => {
       <OrderDialog
         open={openDialog}
         onClose={() => setOpenDialog(false)}
-        order={selectedOrderData}
+        order={selectedOrder ? convertToDialogOrder(selectedOrder) : undefined}
         mode={dialogMode}
         onSubmit={handleSubmitOrder}
       />
