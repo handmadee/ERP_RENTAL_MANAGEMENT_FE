@@ -1,0 +1,171 @@
+import { CalendarToday } from '@mui/icons-material';
+import { Box, InputAdornment } from '@mui/material';
+
+const datePickerCustomStyles = {
+    wrapper: {
+        position: 'relative',
+        width: '100%',
+    },
+    datePicker: {
+        '& .form-control': {
+            width: '100%',
+            height: '56px',
+            padding: '16.5px 14px',
+            fontSize: '1rem',
+            borderRadius: '4px',
+            border: '1px solid rgba(0, 0, 0, 0.23)',
+            backgroundColor: 'transparent',
+            transition: 'border-color 0.2s ease',
+            '&:hover': {
+                borderColor: '#000',
+            },
+            '&:focus': {
+                borderColor: '#1976d2',
+                borderWidth: '2px',
+                outline: 'none',
+            },
+        },
+        '& .react-datepicker': {
+            fontFamily: '"Roboto","Helvetica","Arial",sans-serif',
+            border: '1px solid #E0E0E0',
+            borderRadius: '8px',
+            boxShadow: '0 4px 20px rgba(0,0,0,0.1)',
+        },
+        '& .react-datepicker__header': {
+            backgroundColor: '#F5F5F5',
+            borderBottom: '1px solid #E0E0E0',
+        },
+        '& .react-datepicker__day--selected': {
+            backgroundColor: '#1976d2',
+            color: 'white',
+            borderRadius: '50%',
+            '&:hover': {
+                backgroundColor: '#1565c0',
+            },
+        },
+        '& .react-datepicker__day:hover': {
+            backgroundColor: '#e3f2fd',
+            borderRadius: '50%',
+        },
+        '& .react-datepicker__day--keyboard-selected': {
+            backgroundColor: '#bbdefb',
+            borderRadius: '50%',
+        },
+        '& .react-datepicker__current-month': {
+            fontWeight: 500,
+            fontSize: '1rem',
+        },
+        '& .react-datepicker__day-name': {
+            color: '#757575',
+        },
+    },
+    label: {
+        position: 'absolute',
+        top: '-8px',
+        left: '12px',
+        backgroundColor: 'white',
+        padding: '0 4px',
+        fontSize: '0.75rem',
+        color: 'rgba(0, 0, 0, 0.6)',
+        zIndex: 1,
+    },
+    icon: {
+        position: 'absolute',
+        right: '14px',
+        top: '50%',
+        transform: 'translateY(-50%)',
+        color: 'rgba(0, 0, 0, 0.54)',
+    },
+};
+
+{/* Order Dates */ }
+<Grid item xs={12}>
+    <Typography
+        variant="subtitle1"
+        fontWeight="bold"
+        gutterBottom
+        sx={{
+            mb: 3,
+            color: '#1976d2',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1
+        }}
+    >
+        <CalendarToday sx={{ fontSize: 20 }} />
+        Thông tin thời gian
+    </Typography>
+    <Grid container spacing={3}>
+        <Grid item xs={12} sm={6}>
+            <Box sx={datePickerCustomStyles.wrapper}>
+                <Box sx={datePickerCustomStyles.label}>Ngày bắt đầu thuê</Box>
+                <Box sx={datePickerCustomStyles.datePicker}>
+                    <DatePicker
+                        selected={formik.values.date}
+                        onChange={(newValue) => {
+                            formik.setFieldValue('date', newValue);
+                            if (formik.values.returnDate < newValue) {
+                                formik.setFieldValue('returnDate', newValue);
+                            }
+                        }}
+                        dateFormat="dd/MM/yyyy"
+                        placeholderText="Chọn ngày thuê"
+                        disabled={isView}
+                        showPopperArrow={false}
+                        minDate={new Date()}
+                        customInput={
+                            <TextField
+                                fullWidth
+                                variant="outlined"
+                                InputProps={{
+                                    endAdornment: (
+                                        <InputAdornment position="end">
+                                            <CalendarToday color="action" />
+                                        </InputAdornment>
+                                    ),
+                                }}
+                            />
+                        }
+                    />
+                </Box>
+                <FormHelperText sx={{ ml: 1, color: 'text.secondary' }}>
+                    Chọn ngày khách hàng bắt đầu thuê
+                </FormHelperText>
+            </Box>
+        </Grid>
+        <Grid item xs={12} sm={6}>
+            <Box sx={datePickerCustomStyles.wrapper}>
+                <Box sx={datePickerCustomStyles.label}>Ngày trả hàng</Box>
+                <Box sx={datePickerCustomStyles.datePicker}>
+                    <DatePicker
+                        selected={formik.values.returnDate}
+                        onChange={(newValue) => {
+                            formik.setFieldValue('returnDate', newValue);
+                        }}
+                        dateFormat="dd/MM/yyyy"
+                        placeholderText="Chọn ngày trả"
+                        disabled={isView}
+                        showPopperArrow={false}
+                        minDate={formik.values.date}
+                        customInput={
+                            <TextField
+                                fullWidth
+                                variant="outlined"
+                                InputProps={{
+                                    endAdornment: (
+                                        <InputAdornment position="end">
+                                            <CalendarToday color="action" />
+                                        </InputAdornment>
+                                    ),
+                                }}
+                            />
+                        }
+                    />
+                </Box>
+                <FormHelperText sx={{ ml: 1, color: 'text.secondary' }}>
+                    Chọn ngày khách hàng trả hàng
+                </FormHelperText>
+            </Box>
+        </Grid>
+    </Grid>
+</Grid> 

@@ -48,8 +48,10 @@ import { showToast } from '@/components/common/Toast';
 import OrderDialog, { Order as DialogOrder } from '@/components/orders/OrderDialog';
 import * as Yup from 'yup';
 import orderService from '@/services/orderService';
-import { Order as BackendOrder, OrderFilters, ORDER_STATUS } from '@/types/order';
+import { Order as BackendOrder, OrderFilters, ORDER_STATUS, OrderItem as BackendOrderItem } from '@/types/order';
 import { CreateOrderDTO, UpdateOrderDTO } from '@/types/order';
+import DatePicker from 'react-datepicker';
+import { useFormik } from 'formik';
 
 const statusLabels: Record<string, string> = {
   [ORDER_STATUS.PENDING]: 'Chờ xử lý',
@@ -155,53 +157,21 @@ interface OrderStats {
   }>;
 }
 
-interface OrderDetailsResponse {
-  orderDetails: {
-    _id: string;
-    orderCode: string;
-    customerId: {
-      customerCode: string;
-      fullName: string;
-      phone: string;
-      email?: string;
-      address?: string;
-    };
-    items: Array<{
-      costumeCode: string;
-      costumeName: string;
-      quantity: number;
-      price: number;
-      subtotal: number;
-      availability: {
-        total: number;
-        available: number;
-        rented: number;
-        percentageRented: string;
-      };
-    }>;
-    total: number;
-    deposit: number;
-    remainingAmount: number;
-    status: string;
-    orderDate: string;
-    returnDate: string;
-  };
-}
-
 const convertToDialogOrder = (order: BackendOrder): DialogOrder => ({
   id: order._id,
   customerName: order.customerName,
   customerPhone: order.customerPhone,
   customerEmail: order.customerEmail || '',
-  date: order.orderDate,
-  returnDate: order.returnDate,
+  customerAddress: order.address || '',
+  date: new Date(order.orderDate),
+  returnDate: new Date(order.returnDate),
   status: order.status,
   items: order.items.map(item => ({
     id: item.costumeId,
-    name: '', // This will need to be filled with actual costume name
+    name: '',
     price: item.price,
     quantity: item.quantity,
-    subtotal: item.subtotal
+    subtotal: item.subtotal ?? (item.price * item.quantity)
   })),
   total: order.total,
   deposit: order.deposit,
@@ -214,76 +184,100 @@ const convertToDialogOrder = (order: BackendOrder): DialogOrder => ({
   }))
 });
 
-const convertToBackendOrder = (order: DialogOrder): Partial<BackendOrder> => ({
-  customerName: order.customerName,
-  customerPhone: order.customerPhone,
-  customerEmail: order.customerEmail,
-  orderDate: order.date,
-  returnDate: order.returnDate,
-  status: order.status,
-  items: order.items.map(item => ({
-    costumeId: item.id,
-    quantity: item.quantity,
+const convertApiResponseToBackendOrder = (apiResponse: any): BackendOrder => {
+  console.log('API response to convert:', apiResponse);
+  const orderDetails = apiResponse.orderDetails || apiResponse;
+  const rentalMetrics = apiResponse.rentalMetrics || {};
+  const financialMetrics = apiResponse.financialMetrics || {};
+  const timeline = apiResponse.timeline || orderDetails.timeline || [];
+  const customerHistory = apiResponse.customerHistory || {};
+  const metadata = apiResponse.metadata || {};
+
+  // Chuẩn bị items với đầy đủ thông tin
+  const items = (orderDetails.items || []).map((item: any) => ({
+    id: item.costumeId,
+    code: item.costumeCode,
+    name: item.costumeName,
     price: item.price,
-    subtotal: item.subtotal
-  })),
-  total: order.total,
-  deposit: order.deposit,
-  remainingAmount: order.remainingAmount,
-  note: order.note
-});
-
-const convertToOrder = (orderDetails: OrderDetailsResponse['orderDetails']): BackendOrder => ({
-  _id: orderDetails._id,
-  orderCode: orderDetails.orderCode,
-  customerName: orderDetails.customerId.fullName,
-  customerPhone: orderDetails.customerId.phone,
-  customerEmail: orderDetails.customerId.email,
-  address: orderDetails.customerId.address,
-  orderDate: orderDetails.orderDate,
-  returnDate: orderDetails.returnDate,
-  items: orderDetails.items.map(item => ({
-    costumeId: item.costumeCode,
     quantity: item.quantity,
-    price: item.price,
-    subtotal: item.subtotal
-  })),
-  total: orderDetails.total,
-  deposit: orderDetails.deposit,
-  remainingAmount: orderDetails.remainingAmount,
-  status: orderDetails.status as BackendOrder['status'],
-  timeline: [],
-  createdAt: new Date().toISOString(),
-  updatedAt: new Date().toISOString()
-});
+    subtotal: item.subtotal,
+    size: item.size,
+    category: item.categoryName,
+    imageUrl: item.imageUrl,
+    availability: item.availability,
+    availableQuantity: item.availability?.available || 0
+  }));
 
-const convertToCreateDTO = (order: DialogOrder): CreateOrderDTO => ({
-  customerName: order.customerName,
-  customerPhone: order.customerPhone,
-  customerEmail: order.customerEmail,
-  orderDate: order.date,
-  returnDate: order.returnDate,
-  items: order.items.map(item => ({
-    costumeId: item.id,
-    quantity: item.quantity,
-    price: item.price
-  })),
-  total: order.total,
-  deposit: order.deposit,
-  remainingAmount: order.remainingAmount,
-  note: order.note,
-  status: order.status
-});
+  return {
+    _id: orderDetails._id,
+    orderCode: orderDetails.orderCode,
+    customerName: orderDetails.customerId?.fullName || '',
+    customerPhone: orderDetails.customerId?.phone || '',
+    customerAddress: orderDetails.customerId?.address || '',
+    customerCode: orderDetails.customerId?.customerCode || '',
+    status: orderDetails.status,
+    orderDate: orderDetails.orderDate,
+    returnDate: orderDetails.returnDate,
+    total: orderDetails.total,
+    deposit: orderDetails.deposit,
+    remainingAmount: orderDetails.remainingAmount,
+    note: orderDetails.note,
+    items: items,
+    timeline: timeline,
+    createdAt: orderDetails.createdAt,
+    updatedAt: orderDetails.updatedAt,
+    // Thêm thông tin chi tiết từ API
+    rentalDuration: rentalMetrics.rentalDuration,
+    daysUntilReturn: rentalMetrics.daysUntilReturn,
+    isOverdue: rentalMetrics.isOverdue,
+    paymentStatus: financialMetrics.paymentStatus,
+    paymentPercentage: financialMetrics.paymentPercentage,
+    customerHistory: customerHistory,
+    createdBy: metadata.createdBy?.fullName || ''
+  };
+};
 
-const convertToUpdateDTO = (order: DialogOrder): UpdateOrderDTO => ({
-  customerName: order.customerName,
-  customerPhone: order.customerPhone,
-  orderDate: order.date,
-  returnDate: order.returnDate,
-  status: order.status,
-  deposit: order.deposit,
-  note: order.note
-});
+const convertToCreateDTO = (order: DialogOrder): any => {
+  const payload = {
+    customerName: order.customerName,
+    customerPhone: order.customerPhone,
+    orderDate: new Date(order.date),
+    returnDate: new Date(order.returnDate),
+    items: order.items.map(item => ({
+      costumeId: item.id,
+      quantity: item.quantity,
+      price: item.price,
+      subtotal: Number(item.subtotal || (item.quantity * item.price))
+    })),
+    total: order?.total || 0,
+    deposit: order.deposit,
+    remainingAmount: order.remainingAmount,
+    note: order.note,
+    status: order.status as ORDER_STATUS
+  };
+  console.log('Converting to create DTO:', payload);
+  return payload;
+};
+
+const convertToUpdateDTO = (order: DialogOrder): any => {
+  const payload = {
+    customerName: order.customerName,
+    customerPhone: order.customerPhone,
+    orderDate: order.date,
+    returnDate: order.returnDate,
+    status: order.status,
+    deposit: order.deposit,
+    note: order.note,
+    items: order.items.map(item => ({
+      costumeId: item.id,
+      quantity: item.quantity,
+      price: item.price,
+      subtotal: Number(item.subtotal || (item.quantity * item.price))
+    }))
+  };
+  console.log('Converting to update DTO:', payload);
+  return payload;
+};
 
 const OrdersPage: React.FC = () => {
   const theme = useTheme();
@@ -421,12 +415,14 @@ const OrdersPage: React.FC = () => {
   const handleViewOrder = async () => {
     if (selectedOrder?._id) {
       try {
-        const orderDetails = await orderService.getOrderById(selectedOrder._id);
-        console.log("🚀 ~ handleViewOrder ~ orderDetails:", orderDetails)
-        setSelectedOrder(convertToOrder(orderDetails.orderDetails));
+        const response = await orderService.getOrderById(selectedOrder._id);
+        console.log('API Response:', response);
+        // Use type assertion to handle the API response safely
+        setSelectedOrder(convertApiResponseToBackendOrder(response));
         setDialogMode('view');
         setOpenDialog(true);
       } catch (error) {
+        console.error('Error loading order details:', error);
         showToast.error('Không thể tải thông tin đơn hàng');
       }
     }
@@ -436,11 +432,13 @@ const OrdersPage: React.FC = () => {
   const handleEditOrder = async () => {
     if (selectedOrder?._id) {
       try {
-        const orderDetails = await orderService.getOrderById(selectedOrder._id);
-        setSelectedOrder(convertToOrder(orderDetails.orderDetails));
+        const response = await orderService.getOrderById(selectedOrder._id);
+        // Use type assertion to handle the API response safely
+        setSelectedOrder(convertApiResponseToBackendOrder(response));
         setDialogMode('edit');
         setOpenDialog(true);
       } catch (error) {
+        console.error('Error loading order details for editing:', error);
         showToast.error('Không thể tải thông tin đơn hàng');
       }
     }
@@ -463,20 +461,40 @@ const OrdersPage: React.FC = () => {
 
   const handleSubmitOrder = async (values: DialogOrder) => {
     try {
+      const validatedValues = {
+        ...values,
+        items: values.items.map(item => ({
+          ...item,
+          subtotal: Number(item.subtotal || (item.price * item.quantity))
+        }))
+      };
+
       if (dialogMode === 'create') {
-        await orderService.createOrder(convertToCreateDTO(values));
+        await orderService.createOrder(convertToCreateDTO(validatedValues));
         showToast.success('Tạo đơn hàng thành công');
       } else if (dialogMode === 'edit' && selectedOrder?._id) {
-        await orderService.updateOrder(selectedOrder._id, convertToUpdateDTO(values));
+        await orderService.updateOrder(selectedOrder._id, convertToUpdateDTO(validatedValues));
         showToast.success('Cập nhật đơn hàng thành công');
       }
       setOpenDialog(false);
       fetchOrders();
       fetchStats();
     } catch (error) {
+      console.error('Error submitting order:', error);
       showToast.error('Có lỗi xảy ra khi xử lý đơn hàng');
     }
   };
+
+  const formik = useFormik({
+    initialValues: {
+      date: new Date(),
+      returnDate: new Date(),
+    },
+    validationSchema: validationSchema,
+    onSubmit: (values) => {
+      // Handle form submission
+    },
+  });
 
   return (
     <Box sx={{ py: 3 }}>
@@ -944,6 +962,7 @@ const OrdersPage: React.FC = () => {
         mode={dialogMode}
         onSubmit={handleSubmitOrder}
       />
+
     </Box>
   );
 };

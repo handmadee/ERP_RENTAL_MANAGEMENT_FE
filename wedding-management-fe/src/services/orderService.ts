@@ -24,14 +24,17 @@ const orderService = {
 
     createOrder: async (orderData: CreateOrderDTO): Promise<Order> => {
         try {
-            const response = await api.post(BASE_URL, {
+            const payload = {
                 ...orderData,
                 items: orderData.items.map(item => ({
                     costumeId: item.costumeId,
                     quantity: item.quantity,
                     price: item.price,
+                    subtotal: item.subtotal || (item.quantity * item.price)
                 })),
-            });
+            };
+            console.log('Create Order Payload:', payload);
+            const response = await api.post(BASE_URL, payload);
             return response.data.data;
         } catch (error: any) {
             throw new Error(error.response?.data?.message || 'Có lỗi xảy ra khi tạo đơn hàng');
@@ -40,14 +43,17 @@ const orderService = {
 
     updateOrder: async (id: string, updateData: UpdateOrderDTO): Promise<Order> => {
         try {
-            const response = await api.patch(`${BASE_URL}/${id}`, {
+            const payload = {
                 ...updateData,
                 items: updateData.items?.map(item => ({
                     costumeId: item.costumeId,
                     quantity: item.quantity,
                     price: item.price,
+                    subtotal: item.subtotal || (item.quantity * item.price)
                 })),
-            });
+            };
+            console.log('Update Order Payload:', payload);
+            const response = await api.patch(`${BASE_URL}/${id}`, payload);
             return response.data.data;
         } catch (error: any) {
             throw new Error(error.response?.data?.message || 'Có lỗi xảy ra khi cập nhật đơn hàng');

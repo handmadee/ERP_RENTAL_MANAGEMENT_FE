@@ -51,8 +51,17 @@ const ProductSearch: React.FC<ProductSearchProps> = ({ onSelect, disabled }) => 
                 limit: 10,
                 page: 1,
             });
-            console.log("🚀 ~ searchProducts ~ response v31:", response)
-            setOptions(response.items || []);
+            console.log("🚀 ~ searchProducts ~ response:", response);
+
+            // Đảm bảo quantityAvailable luôn là số hợp lệ
+            const validatedItems = (response.items || []).map(item => ({
+                ...item,
+                quantityAvailable: typeof item.quantityAvailable === 'number' && !isNaN(item.quantityAvailable)
+                    ? item.quantityAvailable
+                    : 0
+            }));
+
+            setOptions(validatedItems);
         } catch (error) {
             console.error('Error searching products:', error);
             setOptions([]);
@@ -74,6 +83,14 @@ const ProductSearch: React.FC<ProductSearchProps> = ({ onSelect, disabled }) => 
         };
     }, [inputValue]);
 
+    // Hàm kiểm tra sản phẩm có sẵn hay không
+    const isProductAvailable = (option: Costume): boolean => {
+        const availableQty = typeof option.quantityAvailable === 'number' && !isNaN(option.quantityAvailable)
+            ? option.quantityAvailable
+            : 0;
+        return availableQty <= 0;
+    };
+
     return (
         <Autocomplete
             fullWidth
@@ -83,7 +100,7 @@ const ProductSearch: React.FC<ProductSearchProps> = ({ onSelect, disabled }) => 
             onInputChange={(_, newValue) => setInputValue(newValue)}
             onChange={(_, value) => onSelect(value)}
             disabled={disabled}
-            getOptionDisabled={(option) => option.quantityAvailable <= 0}
+            getOptionDisabled={(option) => isProductAvailable(option)}
             renderInput={(params) => (
                 <TextField
                     {...params}
@@ -104,9 +121,14 @@ const ProductSearch: React.FC<ProductSearchProps> = ({ onSelect, disabled }) => 
             )}
             renderOption={(props, option) => {
                 const { key, ...restProps } = props;
+                const isOutOfStock = isProductAvailable(option);
+                const qtyAvailable = typeof option.quantityAvailable === 'number' && !isNaN(option.quantityAvailable)
+                    ? option.quantityAvailable
+                    : 0;
+
                 return (
-                    <Tooltip title={option.quantityAvailable <= 0 ? "Sản phẩm đã hết hàng" : ""}>
-                        <li key={key} {...restProps} style={{ opacity: option.quantityAvailable <= 0 ? 0.5 : 1 }}>
+                    <Tooltip title={isOutOfStock ? "Sản phẩm đã hết hàng" : ""}>
+                        <li key={key} {...restProps} style={{ opacity: isOutOfStock ? 0.5 : 1 }}>
                             <Stack direction="row" spacing={2} width="100%" alignItems="center">
                                 <Avatar
                                     src={option.imageUrl}
@@ -128,8 +150,8 @@ const ProductSearch: React.FC<ProductSearchProps> = ({ onSelect, disabled }) => 
                                             />
                                             <Chip
                                                 size="small"
-                                                label={`Còn ${option.quantityAvailable}`}
-                                                color={option.quantityAvailable > 0 ? 'success' : 'error'}
+                                                label={`Còn ${qtyAvailable}`}
+                                                color={qtyAvailable > 0 ? 'success' : 'error'}
                                             />
                                         </Stack>
                                     </Stack>

@@ -29,6 +29,7 @@ export interface Order {
     orderDate: string;
     returnDate: string;
     items: OrderItem[];
+    address: string;
     total: number;
     deposit: number;
     remainingAmount: number;
@@ -48,10 +49,11 @@ export interface CreateOrderDTO {
     customerName: string;
     customerPhone: string;
     customerEmail?: string;
-    orderDate: string;
-    returnDate: string;
+    orderDate: Date;
+    returnDate: Date;
     items: OrderItem[];
     deposit: number;
+    total: number;
     note?: string;
     status?: ORDER_STATUS;
 }
