@@ -2,14 +2,14 @@ export enum ORDER_STATUS {
     PENDING = 'pending',
     ACTIVE = 'active',
     COMPLETED = 'completed',
-    CANCELLED = 'cancelled'
+    CANCELLED = 'cancelled',
 }
 
 export interface OrderItem {
     costumeId: string;
     quantity: number;
     price: number;
-    subtotal: number;
+    subtotal?: number;
 }
 
 export interface OrderTimeline {
@@ -22,121 +22,146 @@ export interface OrderTimeline {
 export interface Order {
     _id: string;
     orderCode: string;
+    customerId: string;
     customerName: string;
     customerPhone: string;
-    customerEmail?: string; 
-    address?: string;
+    customerEmail?: string;
     orderDate: string;
     returnDate: string;
     items: OrderItem[];
     total: number;
     deposit: number;
     remainingAmount: number;
-    status: 'pending' | 'active' | 'completed' | 'cancelled';
+    status: ORDER_STATUS;
     note?: string;
-    timeline: OrderTimeline[];
+    timeline?: {
+        date: string;
+        status: string;
+        note: string;
+    }[];
     createdAt: string;
     updatedAt: string;
 }
 
 export interface CreateOrderDTO {
+    customerId: string;
     customerName: string;
     customerPhone: string;
     customerEmail?: string;
-    address?: string;
     orderDate: string;
     returnDate: string;
-    items: Omit<OrderItem, 'subtotal'>[];
-    total: number;
+    items: OrderItem[];
     deposit: number;
-    remainingAmount: number;
-    status?: string;
     note?: string;
+    status?: ORDER_STATUS;
 }
 
 export interface UpdateOrderDTO {
     customerName?: string;
     customerPhone?: string;
-    address?: string;
+    customerEmail?: string;
     orderDate?: string;
     returnDate?: string;
-    status?: 'pending' | 'active' | 'completed' | 'cancelled';
+    items?: OrderItem[];
     deposit?: number;
     note?: string;
+    status?: ORDER_STATUS;
 }
 
 export interface OrderFilters {
     page?: number;
     limit?: number;
     search?: string;
-    status?: string;
+    status?: ORDER_STATUS;
     startDate?: string;
     endDate?: string;
-    sortBy?: string;
-    sortOrder?: 'asc' | 'desc';
 }
 
 export interface OrderListResponse {
     data: Order[];
     total: number;
-    page: number;
-    limit: number;
 }
 
 export interface OrderDetailsResponse {
-    orderDetails: {
-        _id: string;
-        orderCode: string;
-        customerId: {
-            customerCode: string;
-            fullName: string;
-            phone: string;
-            email?: string;
-            address?: string;
+    orderDetails: Order;
+}
+
+export interface OrderStats {
+    summary: {
+        totalOrders: number;
+        pendingOrders: number;
+        activeOrders: number;
+        completedOrders: number;
+        cancelledOrders: number;
+        monthlyRevenue: number;
+        avgOrderValue: number;
+        depositCollectionRate: string;
+    };
+    performance: {
+        orderCompletion: {
+            completed: number;
+            total: number;
+            rate: string;
         };
-        items: Array<{
-            costumeCode: string;
-            costumeName: string;
-            quantity: number;
-            price: number;
-            subtotal: number;
-            availability: {
-                total: number;
-                available: number;
-                rented: number;
-                percentageRented: string;
-            };
+        financials: {
+            totalRevenue: number;
+            collectedAmount: number;
+            pendingAmount: number;
+            avgOrderValue: number;
+        };
+        customerMetrics: {
+            topCustomers: Array<{
+                customerInfo: {
+                    customerCode: string;
+                    fullName: string;
+                    phone: string;
+                    address?: string;
+                    note?: string;
+                };
+                orderCount: number;
+                totalSpent: number;
+                avgOrderValue: number;
+                lastOrderDate: string;
+            }>;
+            topCostumes: Array<{
+                rentCount: number;
+                revenue: number;
+                avgPrice: number;
+            }>;
+        };
+    };
+    trends: {
+        daily: Array<{
+            date: string;
+            revenue: number;
+            orders: number;
+            deposits: number;
+            pending: number;
         }>;
-        total: number;
-        deposit: number;
-        remainingAmount: number;
-        status: string;
+        weekly: Array<{
+            period: string;
+            orderCount: number;
+            revenue: number;
+            avgOrderValue: number;
+        }>;
+        monthly: Array<{
+            period: string;
+            orderCount: number;
+            revenue: number;
+            avgOrderValue: number;
+        }>;
+    };
+    recentOrders: Array<{
+        orderCode: string;
+        customerName: string;
+        customerPhone: string;
         orderDate: string;
         returnDate: string;
-    };
-    rentalMetrics: {
-        rentalDuration: number;
-        daysUntilReturn: number;
-        isOverdue: boolean;
         status: string;
-        daysLabel: string;
-    };
-    financialMetrics: {
         total: number;
         deposit: number;
         remainingAmount: number;
-        paymentStatus: string;
-        paymentPercentage: string;
-    };
-    customerHistory: {
-        previousOrders: Array<{
-            orderCode: string;
-            orderDate: string;
-            total: number;
-            status: string;
-        }>;
-        totalOrders: number;
-        isReturningCustomer: boolean;
-    };
-    timeline: OrderTimeline[];
+        items: number;
+        createdBy: string;
+    }>;
 } 

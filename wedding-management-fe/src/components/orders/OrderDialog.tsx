@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -21,34 +21,26 @@ import {
   InputLabel,
   Select,
   MenuItem,
-  FormHelperText,
   Box,
-  Autocomplete,
   Paper,
   Divider,
+  FormHelperText,
 } from '@mui/material';
 import {
-  Timeline,
-  TimelineItem,
-  TimelineSeparator,
-  TimelineConnector,
-  TimelineContent,
-  TimelineDot,
-  TimelineOppositeContent,
-} from '@mui/lab';
-import {
   Close,
-  Save,
-  Delete,
-  Add as AddIcon,
-  Search as SearchIcon,
-  QrCodeScanner,
-  Person,
+  Delete as DeleteIcon,
   ContentCopy,
+  Warning,
 } from '@mui/icons-material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
 import { showToast } from '../common/Toast';
+import CustomerSearch from './CustomerSearch';
+import ProductSearch from './ProductSearch';
+import { ORDER_STATUS } from '@/types/order';
+import DatePicker from 'react-datepicker';
+import 'react-datepicker/dist/react-datepicker.css';
+
 
 export interface OrderItem {
   id: string;
@@ -56,6 +48,7 @@ export interface OrderItem {
   price: number;
   quantity: number;
   subtotal: number;
+  availableQuantity?: number;
 }
 
 export interface Order {
@@ -63,8 +56,9 @@ export interface Order {
   customerName: string;
   customerPhone: string;
   customerEmail: string;
-  date: string;
-  returnDate: string;
+  customerAddress: string;
+  date: Date;
+  returnDate: Date;
   status: 'pending' | 'active' | 'completed' | 'cancelled';
   total: number;
   items: OrderItem[];
@@ -91,9 +85,7 @@ const validationSchema = Yup.object({
   customerPhone: Yup.string()
     .matches(/^[0-9]{10}$/, 'Số điện thoại không hợp lệ')
     .required('Số điện thoại là bắt buộc'),
-  customerEmail: Yup.string()
-    .email('Email không hợp lệ')
-    .required('Email là bắt buộc'),
+  customerAddress: Yup.string().required('Địa chỉ là bắt buộc'),
   items: Yup.array()
     .of(
       Yup.object({
@@ -111,17 +103,12 @@ const validationSchema = Yup.object({
   status: Yup.string().required('Trạng thái là bắt buộc'),
 });
 
-// Mock data for products and customers (replace with API calls later)
-const mockProducts = [
-  { code: 'WD001', name: 'Váy cưới công chúa', price: 2990000, inStock: 5 },
-  { code: 'WD002', name: 'Áo dài cưới', price: 2000000, inStock: 3 },
-  { code: 'WD003', name: 'Váy phụ dâu', price: 1500000, inStock: 8 },
-];
-
-const mockCustomers = [
-  { id: 'CUS001', name: 'Nguyễn Văn A', phone: '0123456789', email: 'nguyenvana@example.com', totalOrders: 3 },
-  { id: 'CUS002', name: 'Trần Thị B', phone: '0987654321', email: 'tranthib@example.com', totalOrders: 1 },
-];
+const statusLabels: Record<string, string> = {
+  [ORDER_STATUS.PENDING]: 'Chờ xử lý',
+  [ORDER_STATUS.ACTIVE]: 'Đang thực hiện',
+  [ORDER_STATUS.COMPLETED]: 'Hoàn thành',
+  [ORDER_STATUS.CANCELLED]: 'Đã hủy',
+};
 
 const OrderDialog: React.FC<OrderDialogProps> = ({
   open,
@@ -137,10 +124,6 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
     view: 'Chi tiết đơn hàng',
   }[mode];
 
-  const [selectedCustomer, setSelectedCustomer] = useState<any>(null);
-  const [productCode, setProductCode] = useState('');
-  const [showScanner, setShowScanner] = useState(false);
-
   const handleCopyOrderId = () => {
     if (order?.id) {
       navigator.clipboard.writeText(order.id);
@@ -151,9 +134,10 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
   const initialValues: Order = {
     customerName: '',
     customerPhone: '',
+    customerAddress: '',
     customerEmail: '',
-    date: new Date().toISOString().split('T')[0],
-    returnDate: '',
+    date: new Date(),
+    returnDate: new Date(),
     status: 'pending',
     items: [],
     total: 0,
@@ -178,78 +162,81 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
   });
 
   const handleCustomerSelect = (customer: any) => {
-    setSelectedCustomer(customer);
     if (customer) {
       formik.setValues({
         ...formik.values,
-        customerName: customer.name,
+        customerName: customer.fullName,
         customerPhone: customer.phone,
-        customerEmail: customer.email,
+        customerEmail: customer.email || '',
+        customerAddress: customer.address || '',
       });
     }
   };
 
-  const handleProductCodeSubmit = () => {
-    const product = mockProducts.find(p => p.code === productCode);
+  const handleProductSelect = (product: any) => {
     if (product) {
-      const newItem = {
-        id: product.code,
-        name: product.name,
-        price: product.price,
-        quantity: 1,
-        subtotal: product.price,
-      };
-      formik.setFieldValue('items', [...formik.values.items, newItem]);
-      setProductCode('');
-      showToast.success('Đã thêm sản phẩm vào đơn hàng');
-    } else {
-      showToast.error('Không tìm thấy sản phẩm');
+      const existingItemIndex = formik.values.items.findIndex(item => item.id === product._id);
+      if (existingItemIndex !== -1) {
+        const newItems = [...formik.values.items];
+        const currentItem = newItems[existingItemIndex];
+        const availableQuantity = product.quantity - product.quantityRented;
+        if (currentItem.quantity < availableQuantity) {
+          currentItem.quantity += 1;
+          currentItem.subtotal = currentItem.quantity * currentItem.price;
+          formik.setFieldValue('items', newItems);
+          const total = newItems.reduce((sum, item) => sum + item.subtotal, 0);
+          formik.setFieldValue('total', total);
+        } else {
+          showToast.error('Số lượng sản phẩm trong kho không đủ');
+        }
+      } else {
+        const availableQuantity = product.quantityAvailable;
+        if (availableQuantity > 0) {
+          const newItem: OrderItem = {
+            id: product._id,
+            name: product.name,
+            price: product.price,
+            quantity: 1,
+            subtotal: product.price,
+            availableQuantity,
+          };
+          const newItems = [...formik.values.items, newItem];
+          formik.setFieldValue('items', newItems);
+          const total = newItems.reduce((sum, item) => sum + item.subtotal, 0);
+          formik.setFieldValue('total', total);
+        } else {
+          showToast.error('Sản phẩm đã hết hàng V1');
+        }
+      }
     }
-  };
-
-  // Mock scanner function (replace with actual scanner implementation)
-  const handleScannerClick = () => {
-    setShowScanner(true);
-    // Simulate scanning a product code
-    setTimeout(() => {
-      setProductCode('WD001');
-      setShowScanner(false);
-      handleProductCodeSubmit();
-    }, 1000);
-  };
-
-  const handleAddItem = () => {
-    const newItem: OrderItem = {
-      id: `ITEM${Date.now()}`,
-      name: '',
-      price: 0,
-      quantity: 1,
-      subtotal: 0,
-    };
-    formik.setFieldValue('items', [...formik.values.items, newItem]);
   };
 
   const handleRemoveItem = (index: number) => {
     const newItems = [...formik.values.items];
     newItems.splice(index, 1);
     formik.setFieldValue('items', newItems);
-  };
 
-  const handleItemChange = (index: number, field: keyof OrderItem, value: any) => {
-    const newItems = [...formik.values.items];
-    newItems[index] = {
-      ...newItems[index],
-      [field]: value,
-      subtotal: field === 'quantity' ? newItems[index].price * value : 
-                field === 'price' ? value * newItems[index].quantity :
-                newItems[index].subtotal,
-    };
-    formik.setFieldValue('items', newItems);
-    
     // Update total
     const total = newItems.reduce((sum, item) => sum + item.subtotal, 0);
     formik.setFieldValue('total', total);
-    formik.setFieldValue('remainingAmount', total - formik.values.deposit);
+  };
+
+  const handleQuantityChange = (index: number, value: number) => {
+    const newItems = [...formik.values.items];
+    const item = newItems[index];
+
+    if (value > (item.availableQuantity || 0)) {
+      showToast.error('Số lượng sản phẩm trong kho không đủ');
+      return;
+    }
+
+    item.quantity = value;
+    item.subtotal = item.quantity * item.price;
+    formik.setFieldValue('items', newItems);
+
+    // Update total
+    const total = newItems.reduce((sum, item) => sum + item.subtotal, 0);
+    formik.setFieldValue('total', total);
   };
 
   return (
@@ -290,49 +277,10 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
                 Thông tin khách hàng
               </Typography>
               <Stack spacing={2}>
-                <Autocomplete
-                  options={mockCustomers}
-                  getOptionLabel={(option) => `${option.name} - ${option.phone}`}
-                  onChange={(_, value) => handleCustomerSelect(value)}
-                  renderInput={(params) => (
-                    <TextField
-                      {...params}
-                      label="Tìm kiếm khách hàng"
-                      InputProps={{
-                        ...params.InputProps,
-                        startAdornment: (
-                          <>
-                            <InputAdornment position="start">
-                              <Person />
-                            </InputAdornment>
-                            {params.InputProps.startAdornment}
-                          </>
-                        ),
-                      }}
-                    />
-                  )}
-                  renderOption={(props, option) => (
-                    <li {...props}>
-                      <Stack spacing={1}>
-                        <Typography variant="subtitle2">{option.name}</Typography>
-                        <Stack
-                          direction="row"
-                          spacing={2}
-                          sx={{ color: 'text.secondary' }}
-                        >
-                          <Typography variant="body2">
-                            SĐT: {option.phone}
-                          </Typography>
-                          <Typography variant="body2">
-                            Số đơn: {option.totalOrders}
-                          </Typography>
-                        </Stack>
-                      </Stack>
-                    </li>
-                  )}
+                <CustomerSearch
+                  onSelect={handleCustomerSelect}
+                  disabled={isView}
                 />
-
-                {/* Customer Details Form */}
                 <Grid container spacing={2}>
                   <Grid item xs={12} sm={6}>
                     <TextField
@@ -361,12 +309,12 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
                   <Grid item xs={12}>
                     <TextField
                       fullWidth
-                      name="customerEmail"
-                      label="Email"
-                      value={formik.values.customerEmail}
+                      name="customerAddress"
+                      label="Địa chỉ"
+                      value={formik.values.customerAddress}
                       onChange={formik.handleChange}
-                      error={formik.touched.customerEmail && Boolean(formik.errors.customerEmail)}
-                      helperText={formik.touched.customerEmail && formik.errors.customerEmail}
+                      error={formik.touched.customerAddress && Boolean(formik.errors.customerAddress)}
+                      helperText={formik.touched.customerAddress && formik.errors.customerAddress}
                       disabled={isView}
                     />
                   </Grid>
@@ -374,7 +322,7 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
               </Stack>
             </Grid>
 
-            {/* Product Code Scanner Section */}
+            {/* Product Search Section */}
             {!isView && (
               <Grid item xs={12}>
                 <Paper variant="outlined" sx={{ p: 2 }}>
@@ -382,41 +330,10 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
                     <Typography variant="subtitle1" fontWeight="bold">
                       Thêm sản phẩm
                     </Typography>
-                    <Stack direction="row" spacing={2}>
-                      <TextField
-                        fullWidth
-                        label="Mã sản phẩm"
-                        value={productCode}
-                        onChange={(e) => setProductCode(e.target.value)}
-                        onKeyPress={(e) => {
-                          if (e.key === 'Enter') {
-                            e.preventDefault();
-                            handleProductCodeSubmit();
-                          }
-                        }}
-                        InputProps={{
-                          endAdornment: (
-                            <InputAdornment position="end">
-                              <IconButton onClick={handleScannerClick}>
-                                <QrCodeScanner />
-                              </IconButton>
-                            </InputAdornment>
-                          ),
-                        }}
-                      />
-                      <Button
-                        variant="contained"
-                        onClick={handleProductCodeSubmit}
-                        disabled={!productCode}
-                      >
-                        Thêm
-                      </Button>
-                    </Stack>
-                    {showScanner && (
-                      <Box sx={{ p: 2, textAlign: 'center' }}>
-                        <Typography>Đang quét mã sản phẩm...</Typography>
-                      </Box>
-                    )}
+                    <ProductSearch
+                      onSelect={handleProductSelect}
+                      disabled={isView}
+                    />
                   </Stack>
                 </Paper>
               </Grid>
@@ -424,63 +341,46 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
 
             {/* Order Items */}
             <Grid item xs={12}>
-              <Stack direction="row" justifyContent="space-between" alignItems="center" mb={2}>
-                <Typography variant="subtitle1" fontWeight="bold">
-                  Chi tiết đơn hàng
-                </Typography>
-                {!isView && (
-                  <Button
-                    startIcon={<AddIcon />}
-                    onClick={handleAddItem}
-                    size="small"
-                  >
-                    Thêm sản phẩm
-                  </Button>
-                )}
-              </Stack>
+              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
+                Chi tiết đơn hàng
+              </Typography>
               <TableContainer>
-                <Table size="small">
+                <Table>
                   <TableHead>
                     <TableRow>
                       <TableCell>Sản phẩm</TableCell>
                       <TableCell align="right">Đơn giá</TableCell>
                       <TableCell align="right">Số lượng</TableCell>
                       <TableCell align="right">Thành tiền</TableCell>
-                      {!isView && <TableCell align="right">Thao tác</TableCell>}
+                      {!isView && <TableCell align="right" />}
                     </TableRow>
                   </TableHead>
                   <TableBody>
                     {formik.values.items.map((item, index) => (
                       <TableRow key={item.id}>
-                        <TableCell>
-                          <TextField
-                            fullWidth
-                            size="small"
-                            value={item.name}
-                            onChange={(e) => handleItemChange(index, 'name', e.target.value)}
-                            disabled={isView}
-                          />
-                        </TableCell>
+                        <TableCell>{item.name}</TableCell>
                         <TableCell align="right">
-                          <TextField
-                            size="small"
-                            type="number"
-                            value={item.price}
-                            onChange={(e) => handleItemChange(index, 'price', Number(e.target.value))}
-                            disabled={isView}
-                            InputProps={{
-                              startAdornment: <InputAdornment position="start">₫</InputAdornment>,
-                            }}
-                          />
+                          {new Intl.NumberFormat('vi-VN', {
+                            style: 'currency',
+                            currency: 'VND',
+                          }).format(item.price)}
                         </TableCell>
                         <TableCell align="right">
                           <TextField
                             size="small"
                             type="number"
                             value={item.quantity}
-                            onChange={(e) => handleItemChange(index, 'quantity', Number(e.target.value))}
+                            onChange={(e) => handleQuantityChange(index, Number(e.target.value))}
                             disabled={isView}
+                            InputProps={{
+                              inputProps: { min: 1, max: item.availableQuantity },
+                            }}
                           />
+                          {item.availableQuantity && item.quantity >= item.availableQuantity && (
+                            <Typography variant="caption" color="error" display="block">
+                              Đã đạt giới hạn tồn kho
+                            </Typography>
+                          )}
                         </TableCell>
                         <TableCell align="right">
                           {new Intl.NumberFormat('vi-VN', {
@@ -495,12 +395,21 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
                               onClick={() => handleRemoveItem(index)}
                               color="error"
                             >
-                              <Delete fontSize="small" />
+                              <DeleteIcon fontSize="small" />
                             </IconButton>
                           </TableCell>
                         )}
                       </TableRow>
                     ))}
+                    {formik.values.items.length === 0 && (
+                      <TableRow>
+                        <TableCell colSpan={5} align="center">
+                          <Typography color="text.secondary">
+                            Chưa có sản phẩm nào
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    )}
                   </TableBody>
                 </Table>
               </TableContainer>
@@ -521,7 +430,10 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
                     value={formik.values.deposit}
                     onChange={(e) => {
                       formik.handleChange(e);
-                      formik.setFieldValue('remainingAmount', formik.values.total - Number(e.target.value));
+                      formik.setFieldValue(
+                        'remainingAmount',
+                        formik.values.total - Number(e.target.value)
+                      );
                     }}
                     error={formik.touched.deposit && Boolean(formik.errors.deposit)}
                     helperText={formik.touched.deposit && formik.errors.deposit}
@@ -556,59 +468,82 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
               </Grid>
             </Grid>
 
-            {/* Order Status */}
+            {/* Order Dates */}
             <Grid item xs={12}>
               <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                Trạng thái đơn hàng
+                Thông tin thời gian
               </Typography>
-              <FormControl fullWidth disabled={isView}>
-                <InputLabel>Trạng thái</InputLabel>
-                <Select
-                  name="status"
-                  value={formik.values.status}
-                  onChange={formik.handleChange}
-                  error={formik.touched.status && Boolean(formik.errors.status)}
-                >
-                  <MenuItem value="pending">Chờ xử lý</MenuItem>
-                  <MenuItem value="active">Đang thuê</MenuItem>
-                  <MenuItem value="completed">Hoàn thành</MenuItem>
-                  <MenuItem value="cancelled">Đã hủy</MenuItem>
-                </Select>
-                {formik.touched.status && formik.errors.status && (
-                  <FormHelperText error>{formik.errors.status}</FormHelperText>
-                )}
-              </FormControl>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={6}>
+                  <DatePicker
+                    selected={formik.values.date}
+                    onChange={(newValue) => {
+                      formik.setFieldValue('date', newValue);
+                      // Ensure return date is not before the rental date
+                      if (formik.values.returnDate < newValue) {
+                        formik.setFieldValue('returnDate', newValue);
+                      }
+                    }}
+                    dateFormat="dd/MM/yyyy"
+                    placeholderText="Chọn ngày thuê"
+                    disabled={isView}
+                    className="form-control"
+                    popperPlacement="bottom"
+                    popperModifiers={{
+                      preventOverflow: {
+                        enabled: true,
+                        options: {
+                          padding: 10,
+                        },
+                      },
+                    }}
+                  />
+                  <FormHelperText>Ngày bắt đầu thuê</FormHelperText>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <DatePicker
+                    selected={formik.values.returnDate}
+                    onChange={(newValue) => {
+                      formik.setFieldValue('returnDate', newValue);
+                    }}
+                    dateFormat="dd/MM/yyyy"
+                    placeholderText="Chọn ngày trả"
+                    disabled={isView}
+                    className="form-control"
+                    popperPlacement="bottom"
+                    popperModifiers={{
+                      preventOverflow: {
+                        enabled: true,
+                        options: {
+                          padding: 10,
+                        },
+                      },
+                    }}
+                  />
+                  <FormHelperText>Ngày trả hàng</FormHelperText>
+                </Grid>
+              </Grid>
             </Grid>
 
-            {/* Order Timeline */}
-            {mode === 'view' && order?.timeline && order.timeline.length > 0 && (
+            {/* Status */}
+            {(mode === 'edit' || mode === 'view') && (
               <Grid item xs={12}>
-                <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                  Lịch sử đơn hàng
-                </Typography>
-                <Timeline>
-                  {order.timeline.map((event, index) => (
-                    <TimelineItem key={index}>
-                      <TimelineOppositeContent color="text.secondary">
-                        {new Date(event.time).toLocaleString('vi-VN')}
-                      </TimelineOppositeContent>
-                      <TimelineSeparator>
-                        <TimelineDot color={
-                          event.status === 'completed' ? 'success' :
-                          event.status === 'cancelled' ? 'error' :
-                          'primary'
-                        } />
-                        {index < order.timeline.length - 1 && <TimelineConnector />}
-                      </TimelineSeparator>
-                      <TimelineContent>
-                        <Typography variant="subtitle2">{event.status}</Typography>
-                        <Typography variant="body2" color="text.secondary">
-                          {event.description}
-                        </Typography>
-                      </TimelineContent>
-                    </TimelineItem>
-                  ))}
-                </Timeline>
+                <FormControl fullWidth>
+                  <InputLabel>Trạng thái</InputLabel>
+                  <Select
+                    name="status"
+                    value={formik.values.status}
+                    onChange={formik.handleChange}
+                    disabled={isView}
+                    label="Trạng thái"
+                  >
+                    {Object.entries(statusLabels).map(([value, label]) => (
+                      <MenuItem key={value} value={value}>
+                        {label}
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
               </Grid>
             )}
 
@@ -625,57 +560,25 @@ const OrderDialog: React.FC<OrderDialogProps> = ({
                 disabled={isView}
               />
             </Grid>
-
-            {/* Order Dates Section */}
-            <Grid item xs={12}>
-              <Typography variant="subtitle1" fontWeight="bold" gutterBottom>
-                Thông tin thời gian
-              </Typography>
-              <Grid container spacing={2}>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    type="date"
-                    name="date"
-                    label="Ngày thuê"
-                    value={formik.values.date}
-                    onChange={formik.handleChange}
-                    InputLabelProps={{ shrink: true }}
-                    disabled={isView}
-                  />
-                </Grid>
-                <Grid item xs={12} sm={6}>
-                  <TextField
-                    fullWidth
-                    type="date"
-                    name="returnDate"
-                    label="Ngày trả"
-                    value={formik.values.returnDate}
-                    onChange={formik.handleChange}
-                    InputLabelProps={{ shrink: true }}
-                    disabled={isView}
-                    error={formik.touched.returnDate && Boolean(formik.errors.returnDate)}
-                    helperText={formik.touched.returnDate && formik.errors.returnDate}
-                  />
-                </Grid>
-              </Grid>
-            </Grid>
           </Grid>
         </Box>
       </DialogContent>
 
-      {!isView && (
-        <DialogActions>
-          <Button onClick={onClose}>Hủy</Button>
+      <DialogActions sx={{ p: 2 }}>
+        <Button onClick={onClose}>
+          {isView ? 'Đóng' : 'Hủy'}
+        </Button>
+        {!isView && (
           <Button
+            type="submit"
             variant="contained"
             onClick={() => formik.handleSubmit()}
-            startIcon={<Save />}
+            disabled={formik.isSubmitting}
           >
             {mode === 'create' ? 'Tạo đơn hàng' : 'Cập nhật'}
           </Button>
-        </DialogActions>
-      )}
+        )}
+      </DialogActions>
     </Dialog>
   );
 };

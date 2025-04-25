@@ -67,6 +67,19 @@ export interface CustomerResponse {
     };
 }
 
+export interface DetailedCustomerResponse {
+    success: boolean;
+    data: {
+        data: Customer[];
+        metadata: {
+            total: number;
+            page: number;
+            limit: number;
+            totalPages: number;
+        };
+    };
+}
+
 export interface CreateCustomerDto {
     fullName: string;
     phone: string;
@@ -113,6 +126,15 @@ export class CustomerService {
         }
 
         const response = await api.get<CustomerResponse>(`${this.API_URL}?${params}`);
+        return response.data;
+    }
+
+    async getCustomersWithStats(search?: string) {
+        const params = new URLSearchParams();
+        if (search) {
+            params.append('search', search);
+        }
+        const response = await api.get<DetailedCustomerResponse>(`${this.API_URL}/detailed-list?${params}`);
         return response.data;
     }
 

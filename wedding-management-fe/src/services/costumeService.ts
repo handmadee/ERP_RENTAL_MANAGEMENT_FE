@@ -225,6 +225,22 @@ export const getCostumeDetail = async (id: string): Promise<CostumeDetail> => {
     }
 };
 
+interface SearchCostumeParams {
+    searchTerm?: string;
+    page?: number;
+    limit?: number;
+}
+
+export const searchCostumes = async (params: SearchCostumeParams = {}): Promise<PaginatedResponse<Costume>> => {
+    try {
+        const response = await api.get<ApiResponse<PaginatedResponse<Costume>>>('/costumes/search', { params });
+        return response.data.data;
+    } catch (error) {
+        console.error('Error searching costumes:', error);
+        throw error;
+    }
+};
+
 const costumeService = {
     getCategories,
     getCategoryById,
@@ -240,6 +256,7 @@ const costumeService = {
     getCostumeDetail,
     uploadImage,
     uploadMultipleImages,
+    searchCostumes,
 };
 
 export default costumeService; 
