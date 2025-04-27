@@ -143,7 +143,6 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
 
     const formattedItems = useMemo(() => {
         if (!order?.items) return [];
-        console.log("🚀 ~ formattedItems ~ order v1.1:", order)
         return order.items.map(item => ({
             ...item,
             name: (item as any).name || 'Không có tên',
@@ -154,8 +153,6 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
             availability: (item as any).availability || null,
         }));
     }, [order?.items]);
-
-    // Turn off local loading after component mounts
     React.useEffect(() => {
         if (open && !loading) {
             const timer = setTimeout(() => {
