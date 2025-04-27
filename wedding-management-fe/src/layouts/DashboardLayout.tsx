@@ -272,15 +272,14 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             noWrap
             component="div"
             sx={{
-              background: `linear-gradient(45deg, ${
-                theme.palette.common.white
-              }, ${alpha(theme.palette.primary.light, 0.9)})`,
+              background: `linear-gradient(45deg, ${theme.palette.common.white
+                }, ${alpha(theme.palette.primary.light, 0.9)})`,
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               fontWeight: "bold",
             }}
           >
-            {open ? "Wedding Management" : "WM"}
+            {open ? "Hệ thống quản lý trang phục" : "WM"}
           </Typography>
         </Toolbar>
         <Divider sx={{ borderColor: alpha(theme.palette.common.white, 0.1) }} />
