@@ -26,6 +26,8 @@ import {
   Tooltip,
   CircularProgress,
   Alert,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -42,16 +44,52 @@ import {
   ContentCopy,
   Warning,
   Inbox as InboxIcon,
+  Update as UpdateIcon,
+  LocalShipping,
+  Cancel,
+  AssignmentTurnedIn,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { showToast } from '@/components/common/Toast';
-import OrderDialog, { Order as DialogOrder } from '@/components/orders/OrderDialog';
+import OrderFormDialog, { Order as DialogOrder } from '@/components/orders/OrderDialog';
 import * as Yup from 'yup';
 import orderService from '@/services/orderService';
 import { Order as BackendOrder, OrderFilters, ORDER_STATUS, OrderItem as BackendOrderItem } from '@/types/order';
 import { CreateOrderDTO, UpdateOrderDTO } from '@/types/order';
 import DatePicker from 'react-datepicker';
 import { useFormik } from 'formik';
+import OrderDetailDialog from '@/components/orders/OrderDetailDialog';
+
+// Extended BackendOrder interface to include additional properties used in the application
+interface ExtendedBackendOrder extends BackendOrder {
+  customerCode?: string;
+  rentalDuration?: number;
+  daysUntilReturn?: number;
+  isOverdue?: boolean;
+  paymentStatus?: string;
+  paymentPercentage?: number;
+  customerHistory?: {
+    totalOrders: number;
+    isReturningCustomer: boolean;
+  };
+  createdBy?: string;
+}
+
+// Extended BackendOrderItem to include additional display properties
+interface ExtendedBackendOrderItem extends BackendOrderItem {
+  name?: string;
+  code?: string;
+  size?: string;
+  category?: string;
+  imageUrl?: string;
+  availability?: {
+    total: number;
+    available: number;
+    rented: number;
+    percentageRented: string;
+  };
+  availableQuantity?: number;
+}
 
 const statusLabels: Record<string, string> = {
   [ORDER_STATUS.PENDING]: 'Chờ xử lý',
@@ -157,7 +195,7 @@ interface OrderStats {
   }>;
 }
 
-const convertToDialogOrder = (order: BackendOrder): DialogOrder => ({
+const convertToDialogOrder = (order: ExtendedBackendOrder): DialogOrder => ({
   id: order._id,
   customerName: order.customerName,
   customerPhone: order.customerPhone,
@@ -184,7 +222,7 @@ const convertToDialogOrder = (order: BackendOrder): DialogOrder => ({
   }))
 });
 
-const convertApiResponseToBackendOrder = (apiResponse: any): BackendOrder => {
+const convertApiResponseToBackendOrder = (apiResponse: any): ExtendedBackendOrder => {
   console.log('API response to convert:', apiResponse);
   const orderDetails = apiResponse.orderDetails || apiResponse;
   const rentalMetrics = apiResponse.rentalMetrics || {};
@@ -195,12 +233,13 @@ const convertApiResponseToBackendOrder = (apiResponse: any): BackendOrder => {
 
   // Chuẩn bị items với đầy đủ thông tin
   const items = (orderDetails.items || []).map((item: any) => ({
-    id: item.costumeId,
+    costumeId: item.costumeId,
+    quantity: item.quantity,
+    price: item.price,
+    subtotal: item.subtotal,
+    // Additional properties for display purposes
     code: item.costumeCode,
     name: item.costumeName,
-    price: item.price,
-    quantity: item.quantity,
-    subtotal: item.subtotal,
     size: item.size,
     category: item.categoryName,
     imageUrl: item.imageUrl,
@@ -213,8 +252,9 @@ const convertApiResponseToBackendOrder = (apiResponse: any): BackendOrder => {
     orderCode: orderDetails.orderCode,
     customerName: orderDetails.customerId?.fullName || '',
     customerPhone: orderDetails.customerId?.phone || '',
-    customerAddress: orderDetails.customerId?.address || '',
+    address: orderDetails.customerId?.address || '',
     customerCode: orderDetails.customerId?.customerCode || '',
+    customerId: orderDetails.customerId?._id || '',
     status: orderDetails.status,
     orderDate: orderDetails.orderDate,
     returnDate: orderDetails.returnDate,
@@ -279,6 +319,9 @@ const convertToUpdateDTO = (order: DialogOrder): any => {
   return payload;
 };
 
+// Add a request cache to prevent duplicate requests
+const ordersCache = new Map();
+
 const OrdersPage: React.FC = () => {
   const theme = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
@@ -286,11 +329,11 @@ const OrdersPage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedOrder, setSelectedOrder] = useState<BackendOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<ExtendedBackendOrder | null>(null);
   const [actionAnchorEl, setActionAnchorEl] = useState<null | HTMLElement>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState<'create' | 'edit' | 'view'>('create');
-  const [orders, setOrders] = useState<BackendOrder[]>([]);
+  const [orders, setOrders] = useState<ExtendedBackendOrder[]>([]);
   const [totalOrders, setTotalOrders] = useState(0);
   const [loading, setLoading] = useState(false);
   const [stats, setStats] = useState<OrderStats>({
@@ -329,6 +372,9 @@ const OrdersPage: React.FC = () => {
     recentOrders: [],
   });
   const [statsLoading, setStatsLoading] = useState(true);
+  const [statusUpdateAnchorEl, setStatusUpdateAnchorEl] = useState<null | HTMLElement>(null);
+  const [orderToUpdateStatus, setOrderToUpdateStatus] = useState<ExtendedBackendOrder | null>(null);
+  const [loadingDetails, setLoadingDetails] = useState(false);
 
   const fetchOrders = async () => {
     try {
@@ -396,7 +442,7 @@ const OrdersPage: React.FC = () => {
     handleFilterClose();
   };
 
-  const handleActionClick = (event: React.MouseEvent<HTMLElement>, order: BackendOrder) => {
+  const handleActionClick = (event: React.MouseEvent<HTMLElement>, order: ExtendedBackendOrder) => {
     setSelectedOrder(order);
     setActionAnchorEl(event.currentTarget);
   };
@@ -415,34 +461,52 @@ const OrdersPage: React.FC = () => {
   const handleViewOrder = async () => {
     if (selectedOrder?._id) {
       try {
+        setLoadingDetails(true);
+        if (ordersCache.has(selectedOrder._id)) {
+          console.log('Using cached order details');
+          const cachedOrder = ordersCache.get(selectedOrder._id);
+          setSelectedOrder(cachedOrder);
+          setDialogMode('view');
+          setOpenDialog(true);
+          setLoadingDetails(false);
+          return;
+        }
+
+        console.log('Fetching order details from API');
         const response = await orderService.getOrderById(selectedOrder._id);
         console.log('API Response:', response);
-        // Use type assertion to handle the API response safely
-        setSelectedOrder(convertApiResponseToBackendOrder(response));
+        const convertedOrder = convertApiResponseToBackendOrder(response);
+        ordersCache.set(selectedOrder._id, convertedOrder);
+        setSelectedOrder(convertedOrder);
         setDialogMode('view');
         setOpenDialog(true);
       } catch (error) {
         console.error('Error loading order details:', error);
         showToast.error('Không thể tải thông tin đơn hàng');
+      } finally {
+        setLoadingDetails(false);
+        handleActionClose();
       }
     }
-    handleActionClose();
   };
 
   const handleEditOrder = async () => {
     if (selectedOrder?._id) {
       try {
+        setLoadingDetails(true);
         const response = await orderService.getOrderById(selectedOrder._id);
-        // Use type assertion to handle the API response safely
-        setSelectedOrder(convertApiResponseToBackendOrder(response));
+        const convertedOrder = convertApiResponseToBackendOrder(response);
+        setSelectedOrder(convertedOrder);
         setDialogMode('edit');
         setOpenDialog(true);
       } catch (error) {
         console.error('Error loading order details for editing:', error);
         showToast.error('Không thể tải thông tin đơn hàng');
+      } finally {
+        setLoadingDetails(false);
+        handleActionClose();
       }
     }
-    handleActionClose();
   };
 
   const handleDeleteOrder = async () => {
@@ -495,6 +559,36 @@ const OrdersPage: React.FC = () => {
       // Handle form submission
     },
   });
+
+  const handleStatusUpdateClick = (event: React.MouseEvent<HTMLElement>, order: ExtendedBackendOrder) => {
+    setOrderToUpdateStatus(order);
+    setStatusUpdateAnchorEl(event.currentTarget);
+  };
+
+  const handleStatusUpdateClose = () => {
+    setOrderToUpdateStatus(null);
+    setStatusUpdateAnchorEl(null);
+  };
+
+  const handleStatusUpdate = async (status: string, data: any) => {
+    if (!selectedOrder?._id) return;
+
+    try {
+      await orderService.updateOrderStatus(selectedOrder._id, {
+        status,
+        note: data.note,
+        isFullyPaid: data.isFullyPaid,
+        returnedOnTime: data.returnedOnTime,
+      });
+      showToast.success(`Cập nhật trạng thái thành ${statusLabels[status]}`);
+      fetchOrders();
+      fetchStats();
+      setOpenDialog(false);
+    } catch (error) {
+      console.error('Error updating order status:', error);
+      showToast.error('Không thể cập nhật trạng thái đơn hàng');
+    }
+  };
 
   return (
     <Box sx={{ py: 3 }}>
@@ -942,26 +1036,129 @@ const OrdersPage: React.FC = () => {
         TransitionComponent={Fade}
       >
         <MenuItem onClick={handleViewOrder}>
-          <Visibility fontSize="small" sx={{ mr: 2 }} />
-          Xem chi tiết
+          <ListItemIcon>
+            <Visibility fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Xem chi tiết</ListItemText>
         </MenuItem>
         <MenuItem onClick={handleEditOrder}>
-          <EditIcon fontSize="small" sx={{ mr: 2 }} />
-          Chỉnh sửa
+          <ListItemIcon>
+            <EditIcon fontSize="small" />
+          </ListItemIcon>
+          <ListItemText>Chỉnh sửa</ListItemText>
         </MenuItem>
+        {selectedOrder && (selectedOrder.status === ORDER_STATUS.PENDING || selectedOrder.status === ORDER_STATUS.ACTIVE) && (
+          <MenuItem onClick={(e) => handleStatusUpdateClick(e, selectedOrder)}>
+            <ListItemIcon>
+              <UpdateIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Cập nhật trạng thái</ListItemText>
+          </MenuItem>
+        )}
         <MenuItem onClick={handleDeleteOrder} sx={{ color: 'error.main' }}>
-          <DeleteIcon fontSize="small" sx={{ mr: 2 }} />
-          Xóa
+          <ListItemIcon>
+            <DeleteIcon fontSize="small" color="error" />
+          </ListItemIcon>
+          <ListItemText>Xóa</ListItemText>
         </MenuItem>
       </Menu>
 
-      <OrderDialog
-        open={openDialog}
-        onClose={() => setOpenDialog(false)}
-        order={selectedOrder ? convertToDialogOrder(selectedOrder) : undefined}
-        mode={dialogMode}
-        onSubmit={handleSubmitOrder}
-      />
+      <Menu
+        anchorEl={statusUpdateAnchorEl}
+        open={Boolean(statusUpdateAnchorEl)}
+        onClose={handleStatusUpdateClose}
+        TransitionComponent={Fade}
+      >
+        {orderToUpdateStatus?.status === ORDER_STATUS.PENDING && (
+          <>
+            <MenuItem onClick={() => handleStatusUpdate(ORDER_STATUS.ACTIVE, {})}>
+              <ListItemIcon>
+                <LocalShipping fontSize="small" color="info" />
+              </ListItemIcon>
+              <ListItemText>Chuyển sang Đang thực hiện</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleStatusUpdate(ORDER_STATUS.CANCELLED, {})}>
+              <ListItemIcon>
+                <Cancel fontSize="small" color="error" />
+              </ListItemIcon>
+              <ListItemText>Hủy đơn hàng</ListItemText>
+            </MenuItem>
+          </>
+        )}
+        {orderToUpdateStatus?.status === ORDER_STATUS.ACTIVE && (
+          <>
+            <MenuItem onClick={() => handleStatusUpdate(ORDER_STATUS.COMPLETED, {})}>
+              <ListItemIcon>
+                <AssignmentTurnedIn fontSize="small" color="success" />
+              </ListItemIcon>
+              <ListItemText>Hoàn thành đơn hàng</ListItemText>
+            </MenuItem>
+            <MenuItem onClick={() => handleStatusUpdate(ORDER_STATUS.CANCELLED, {})}>
+              <ListItemIcon>
+                <Cancel fontSize="small" color="error" />
+              </ListItemIcon>
+              <ListItemText>Hủy đơn hàng</ListItemText>
+            </MenuItem>
+          </>
+        )}
+      </Menu>
+
+      {/* Dialogs */}
+      {dialogMode === 'view' ? (
+        <OrderDetailDialog
+          open={openDialog}
+          onClose={() => {
+            setOpenDialog(false);
+            setSelectedOrder(null);
+            setLoadingDetails(false);
+          }}
+          order={selectedOrder ? {
+            ...selectedOrder,
+            _id: selectedOrder._id,
+            orderCode: selectedOrder.orderCode,
+            customerName: selectedOrder.customerName,
+            customerPhone: selectedOrder.customerPhone,
+            address: selectedOrder.address,
+            orderDate: selectedOrder.orderDate,
+            returnDate: selectedOrder.returnDate,
+            items: selectedOrder.items.map(item => ({
+              ...item,
+              name: (item as any).name || '',
+              code: (item as any).code || '',
+              size: (item as any).size || '',
+              category: (item as any).category || '',
+              imageUrl: (item as any).imageUrl || '',
+              availability: (item as any).availability
+            })),
+            total: selectedOrder.total,
+            deposit: selectedOrder.deposit,
+            remainingAmount: selectedOrder.remainingAmount,
+            status: selectedOrder.status,
+            note: selectedOrder.note,
+            timeline: selectedOrder.timeline,
+            rentalDuration: selectedOrder.rentalDuration,
+            daysUntilReturn: selectedOrder.daysUntilReturn,
+            isOverdue: selectedOrder.isOverdue,
+            paymentStatus: selectedOrder.paymentStatus,
+            paymentPercentage: selectedOrder.paymentPercentage,
+            createdBy: selectedOrder.createdBy
+          } : undefined}
+          onStatusUpdate={handleStatusUpdate}
+          loading={loadingDetails}
+        />
+      ) : (
+        <OrderFormDialog
+          open={openDialog}
+          onClose={() => {
+            setOpenDialog(false);
+            setSelectedOrder(null);
+          }}
+          order={selectedOrder ? convertToDialogOrder(selectedOrder) : undefined}
+          mode={dialogMode}
+          onSubmit={handleSubmitOrder}
+          loading={loadingDetails}
+        />
+      )}
 
     </Box>
   );

@@ -92,6 +92,16 @@ const orderService = {
             };
         }
     },
+    //
+    // Call API to update status using the api service
+    updateOrderStatus: async (orderId: string, statusPayload: any): Promise<any> => {
+        try {
+            const response = await api.patch(`${BASE_URL}/${orderId}/status`, statusPayload);
+            return response.data.data;
+        } catch (error: any) {
+            throw new Error(error.response?.data?.message || 'Có lỗi xảy ra khi cập nhật trạng thái đơn hàng');
+        }
+    }
 };
 
 export default orderService; 
