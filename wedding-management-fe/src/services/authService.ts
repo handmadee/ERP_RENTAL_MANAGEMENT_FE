@@ -1,4 +1,4 @@
-import { api } from "./api";
+import { api, ApiResponse } from "./api";
 
 export interface RegisterDto {
     email: string;
@@ -82,19 +82,35 @@ class AuthService {
     private readonly SETTINGS_URL = '/settings';
 
     async register(registerData: RegisterDto): Promise<AuthResponse> {
-        const response = await api.post<AuthResponse>(
+        const response = await api.post<ApiResponse<AuthResponse>>(
             `${this.API_URL}/register`,
             registerData
         );
-        return response.data;
+
+        const authData = response.data.data;
+
+        if (authData.accessToken && authData.refreshToken) {
+            this.saveTokens(authData.accessToken, authData.refreshToken);
+            this.saveUser(authData.user);
+        }
+
+        return authData;
     }
 
     async login(email: string, password: string): Promise<AuthResponse> {
-        const response = await api.post(`${this.API_URL}/login`, {
+        const response = await api.post<ApiResponse<AuthResponse>>(`${this.API_URL}/login`, {
             email,
             password,
         });
-        return response.data.data;
+
+        const authData = response.data.data;
+
+        if (authData.accessToken && authData.refreshToken) {
+            this.saveTokens(authData.accessToken, authData.refreshToken);
+            this.saveUser(authData.user);
+        }
+
+        return authData;
     }
 
     async logout(): Promise<void> {
@@ -155,13 +171,12 @@ class AuthService {
     }
 
     async getSettings(): Promise<Settings> {
-        const response = await api.get<{ success: boolean; data: Settings }>(this.SETTINGS_URL);
-        console.log("🚀 ~ AuthService ~ getSettings ~ response:", response)
+        const response = await api.get<ApiResponse<Settings>>(this.SETTINGS_URL);
         return response.data.data;
     }
 
     async updateSettings(data: Partial<Settings>): Promise<Settings> {
-        const response = await api.put<{ success: boolean; data: Settings }>(this.SETTINGS_URL, data);
+        const response = await api.put<ApiResponse<Settings>>(this.SETTINGS_URL, data);
         return response.data.data;
     }
 
@@ -174,28 +189,45 @@ class AuthService {
     }
 
     async refreshToken(refreshToken: string): Promise<AuthResponse> {
-        const response = await api.post<AuthResponse>(`${this.API_URL}/refresh-token`, {
+        const response = await api.post<ApiResponse<{
+            accessToken: string;
+            refreshToken: string;
+        }>>(`${this.API_URL}/refresh-token`, {
             refreshToken,
-    
         });
-        console.log("🚀 ~ AuthService ~ refreshToken ~ response:", response.data)
-        if (response.data.accessToken) {
-            this.saveTokens(response.data.accessToken, response.data.refreshToken);
+
+        const authData = response.data.data;
+
+        if (authData.accessToken && authData.refreshToken) {
+            this.saveTokens(authData.accessToken, authData.refreshToken);
         }
 
-        return response.data;
+        return {
+            accessToken: authData.accessToken,
+            refreshToken: authData.refreshToken,
+            user: this.getCurrentUser() as UserProfile
+        };
     }
 
     async getProfile(): Promise<UserProfile> {
-        const response = await api.get<UserProfile>(`${this.API_URL}/profile`);
-        this.saveUser(response.data);
-        return response.data;
+        const response = await api.get<ApiResponse<UserProfile>>(`${this.API_URL}/profile`);
+
+        const userData = response.data.data;
+        this.saveUser(userData);
+        return userData;
     }
 
     isAuthenticated(): boolean {
         const token = this.getToken();
         if (!token) return false;
-        return true;
+
+        try {
+            // Decode JWT and check expiration
+            const payload = JSON.parse(atob(token.split('.')[1]));
+            return payload.exp * 1000 > Date.now();
+        } catch {
+            return false;
+        }
     }
 
     getToken(): string | null {
@@ -233,4 +265,4 @@ class AuthService {
     }
 }
 
-export const authService = new AuthService(); 
+export const authService = new AuthService();
