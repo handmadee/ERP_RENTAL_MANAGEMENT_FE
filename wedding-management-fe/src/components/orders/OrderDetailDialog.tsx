@@ -178,7 +178,7 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
                 <DialogTitle>
                     <Stack direction="row" alignItems="center" justifyContent="space-between">
                         <Stack direction="row" alignItems="center" spacing={2}>
-                            <Typography variant="h6">Chi tiết đơn hàng</Typography>
+                            <Typography variant="h6">Chi tiết đơn hàng </Typography>
                             {order.orderCode && (
                                 <Chip
                                     label={order.orderCode}

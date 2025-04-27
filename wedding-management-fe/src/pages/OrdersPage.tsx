@@ -55,8 +55,6 @@ import OrderFormDialog, { Order as DialogOrder } from '@/components/orders/Order
 import * as Yup from 'yup';
 import orderService from '@/services/orderService';
 import { Order as BackendOrder, OrderFilters, ORDER_STATUS, OrderItem as BackendOrderItem } from '@/types/order';
-import { CreateOrderDTO, UpdateOrderDTO } from '@/types/order';
-import DatePicker from 'react-datepicker';
 import { useFormik } from 'formik';
 import OrderDetailDialog from '@/components/orders/OrderDetailDialog';
 
@@ -329,7 +327,7 @@ const OrdersPage: React.FC = () => {
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
-  const [selectedOrder, setSelectedOrder] = useState<ExtendedBackendOrder | null>(null);
+  const [selectedOrder, setSelectedOrder] = useState<any | null>(null);
   const [actionAnchorEl, setActionAnchorEl] = useState<null | HTMLElement>(null);
   const [openDialog, setOpenDialog] = useState(false);
   const [dialogMode, setDialogMode] = useState<'create' | 'edit' | 'view'>('create');
@@ -442,7 +440,7 @@ const OrdersPage: React.FC = () => {
     handleFilterClose();
   };
 
-  const handleActionClick = (event: React.MouseEvent<HTMLElement>, order: ExtendedBackendOrder) => {
+  const handleActionClick = (event: React.MouseEvent<HTMLElement>, order: any) => {
     setSelectedOrder(order);
     setActionAnchorEl(event.currentTarget);
   };
@@ -450,6 +448,12 @@ const OrdersPage: React.FC = () => {
   const handleActionClose = () => {
     setSelectedOrder(null);
     setActionAnchorEl(null);
+  };
+
+  const handleDialogClose = () => {
+    setOpenDialog(false);
+    setSelectedOrder(null);
+    setLoadingDetails(false);
   };
 
   const handleCreateOrder = () => {
@@ -461,31 +465,42 @@ const OrdersPage: React.FC = () => {
   const handleViewOrder = async () => {
     if (selectedOrder?._id) {
       try {
+        // Hiển thị popup ngay lập tức
+        setDialogMode('view');
+        setOpenDialog(true);
         setLoadingDetails(true);
+
+        // Sau đó mới thực hiện việc load dữ liệu
         if (ordersCache.has(selectedOrder._id)) {
           console.log('Using cached order details');
           const cachedOrder = ordersCache.get(selectedOrder._id);
           setSelectedOrder(cachedOrder);
-          setDialogMode('view');
-          setOpenDialog(true);
           setLoadingDetails(false);
-          return;
+        } else {
+          console.log('Fetching order details from API');
+          // Sử dụng một hàm bất đồng bộ ngay lập tức để không chặn UI
+          setTimeout(async () => {
+            try {
+              const response = await orderService.getOrderById(selectedOrder._id);
+              console.log('API Response:', response);
+              const convertedOrder = convertApiResponseToBackendOrder(response);
+              ordersCache.set(selectedOrder._id, convertedOrder);
+              setSelectedOrder(convertedOrder);
+            } catch (error) {
+              console.error('Error loading order details:', error);
+              showToast.error('Không thể tải thông tin đơn hàng');
+            } finally {
+              setLoadingDetails(false);
+            }
+          }, 0);
         }
 
-        console.log('Fetching order details from API');
-        const response = await orderService.getOrderById(selectedOrder._id);
-        console.log('API Response:', response);
-        const convertedOrder = convertApiResponseToBackendOrder(response);
-        ordersCache.set(selectedOrder._id, convertedOrder);
-        setSelectedOrder(convertedOrder);
-        setDialogMode('view');
-        setOpenDialog(true);
-      } catch (error) {
-        console.error('Error loading order details:', error);
-        showToast.error('Không thể tải thông tin đơn hàng');
-      } finally {
-        setLoadingDetails(false);
+        // Đóng menu
         handleActionClose();
+      } catch (error) {
+        console.error('Error in view order process:', error);
+        showToast.error('Có lỗi xảy ra');
+        setLoadingDetails(false);
       }
     }
   };
@@ -571,10 +586,10 @@ const OrdersPage: React.FC = () => {
   };
 
   const handleStatusUpdate = async (status: string, data: any) => {
-    if (!selectedOrder?._id) return;
+    if (!orderToUpdateStatus?._id) return;
 
     try {
-      await orderService.updateOrderStatus(selectedOrder._id, {
+      await orderService.updateOrderStatus(orderToUpdateStatus._id, {
         status,
         note: data.note,
         isFullyPaid: data.isFullyPaid,
@@ -583,6 +598,7 @@ const OrdersPage: React.FC = () => {
       showToast.success(`Cập nhật trạng thái thành ${statusLabels[status]}`);
       fetchOrders();
       fetchStats();
+      handleStatusUpdateClose();
       setOpenDialog(false);
     } catch (error) {
       console.error('Error updating order status:', error);
@@ -1107,11 +1123,7 @@ const OrdersPage: React.FC = () => {
       {dialogMode === 'view' ? (
         <OrderDetailDialog
           open={openDialog}
-          onClose={() => {
-            setOpenDialog(false);
-            setSelectedOrder(null);
-            setLoadingDetails(false);
-          }}
+          onClose={handleDialogClose}
           order={selectedOrder ? {
             ...selectedOrder,
             _id: selectedOrder._id,
@@ -1121,15 +1133,17 @@ const OrdersPage: React.FC = () => {
             address: selectedOrder.address,
             orderDate: selectedOrder.orderDate,
             returnDate: selectedOrder.returnDate,
-            items: selectedOrder.items.map(item => ({
-              ...item,
-              name: (item as any).name || '',
-              code: (item as any).code || '',
-              size: (item as any).size || '',
-              category: (item as any).category || '',
-              imageUrl: (item as any).imageUrl || '',
-              availability: (item as any).availability
-            })),
+            items: selectedOrder.items.map((item: ExtendedBackendOrderItem) => {
+              return ({
+                ...item,
+                name: (item as any).name || '',
+                code: (item as any).code || '',
+                size: (item as any).size || '',
+                category: (item as any).category || '',
+                imageUrl: (item as any).imageUrl || '',
+                availability: (item as any).availability
+              })
+            }),
             total: selectedOrder.total,
             deposit: selectedOrder.deposit,
             remainingAmount: selectedOrder.remainingAmount,
@@ -1149,10 +1163,7 @@ const OrdersPage: React.FC = () => {
       ) : (
         <OrderFormDialog
           open={openDialog}
-          onClose={() => {
-            setOpenDialog(false);
-            setSelectedOrder(null);
-          }}
+          onClose={handleDialogClose}
           order={selectedOrder ? convertToDialogOrder(selectedOrder) : undefined}
           mode={dialogMode}
           onSubmit={handleSubmitOrder}
