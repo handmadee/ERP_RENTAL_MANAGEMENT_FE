@@ -63,6 +63,33 @@ import { ORDER_STATUS } from '@/types/order';
 import { getStatusColor, getStatusLabel } from '@/theme/ThemeFallback';
 import { Order } from '../../types/order';
 
+// Helper functions for customer loyalty level
+const getLoyaltyLevel = (orderCount: number): string => {
+    if (orderCount >= 10) return 'Khách hàng VIP';
+    if (orderCount >= 5) return 'Khách hàng thân thiết';
+    if (orderCount >= 3) return 'Khách hàng thường xuyên';
+    if (orderCount >= 1) return 'Khách hàng quen';
+    return 'Khách hàng mới';
+};
+
+const getLoyaltyColor = (
+    orderCount: number,
+    theme?: any
+): 'primary' | 'secondary' | 'error' | 'info' | 'success' | 'warning' => {
+    if (orderCount >= 10) return 'error'; // VIP color
+    if (orderCount >= 5) return 'warning'; // Gold color
+    if (orderCount >= 3) return 'success'; // Regular color
+    if (orderCount >= 1) return 'info'; // New recurring color
+    return 'primary';
+};
+
+const getLoyaltyDescription = (orderCount: number): string => {
+    if (orderCount >= 10) return 'Khách hàng đã đặt 10+ đơn hàng. Cần được chăm sóc đặc biệt và ưu đãi tốt nhất.';
+    if (orderCount >= 5) return 'Khách hàng đã đặt 5+ đơn hàng. Xứng đáng nhận được ưu đãi đặc biệt.';
+    if (orderCount >= 3) return 'Khách hàng đã đặt 3+ đơn hàng. Nên cung cấp dịch vụ ưu tiên.';
+    if (orderCount >= 1) return 'Khách hàng đã đặt hàng trước đây. Nên cung cấp dịch vụ tận tâm.';
+    return 'Đây là đơn hàng đầu tiên của khách. Cần tạo ấn tượng tốt.';
+};
 
 interface OrderDetailDialogProps {
     open: boolean;
@@ -82,6 +109,17 @@ interface OrderDetailDialogProps {
         createdBy?: string;
         isNewCustomer?: boolean;
         customerTotalOrders?: number;
+        customerHistory?: {
+            previousOrders: Array<{
+                _id: string;
+                orderCode: string;
+                orderDate: string;
+                total: number;
+                status: string;
+            }>;
+            totalOrders: number;
+            isReturningCustomer: boolean;
+        };
     };
     onStatusUpdate?: (status: string, data: any) => Promise<void>;
     loading?: boolean;
@@ -281,7 +319,7 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
                                             Thông tin khách hàng
                                         </Typography>
                                     </Stack>
-                                    {order.isNewCustomer && (
+                                    {order.customerHistory?.totalOrders === 1 && (
                                         <Chip
                                             icon={<FiberNew fontSize="small" />}
                                             label="Khách hàng mới"
@@ -290,11 +328,11 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
                                             sx={{ fontWeight: 'medium' }}
                                         />
                                     )}
-                                    {order.customerTotalOrders && order.customerTotalOrders > 1 && (
-                                        <Tooltip title={`Khách hàng thân thiết - ${order.customerTotalOrders} đơn hàng`}>
+                                    {order.customerHistory?.totalOrders && order.customerHistory.totalOrders > 1 && (
+                                        <Tooltip title={`Khách hàng thân thiết - ${order.customerHistory?.totalOrders} đơn hàng`}>
                                             <Chip
                                                 icon={<EmojiEvents fontSize="small" />}
-                                                label={`${order.customerTotalOrders} đơn hàng`}
+                                                label={`${order.customerHistory?.totalOrders} đơn hàng`}
                                                 color="primary"
                                                 variant="outlined"
                                                 size="small"
@@ -416,6 +454,136 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
                                     </Grid>
                                 </Box>
                             </Paper>
+
+                            {/* Customer History - Enhanced */}
+                            {order.customerHistory && order.customerHistory.previousOrders && order.customerHistory.previousOrders.length > 0 && (
+                                <Paper elevation={0} variant="outlined" sx={{ p: 2 }}>
+                                    <Stack direction="row" alignItems="center" justifyContent="space-between" mb={1.5}>
+                                        <Stack direction="row" alignItems="center" spacing={1}>
+                                            <Group fontSize="small" color="primary" />
+                                            <Typography variant="subtitle1" fontWeight="bold">
+                                                Lịch sử mua hàng của khách
+                                            </Typography>
+                                        </Stack>
+                                        <Chip
+                                            icon={<EmojiEvents fontSize="small" />}
+                                            label={getLoyaltyLevel(order.customerHistory?.totalOrders || 0)}
+                                            color={getLoyaltyColor(order.customerHistory?.totalOrders || 0, theme)}
+                                            size="small"
+                                            sx={{ fontWeight: 'medium' }}
+                                        />
+                                    </Stack>
+                                    <Box sx={{
+                                        py: 1.5,
+                                        px: 2,
+                                        bgcolor: alpha(theme.palette.background.default, 0.7),
+                                        borderRadius: 1,
+                                        border: `1px solid ${alpha(theme.palette.divider, 0.1)}`
+                                    }}>
+                                        <Typography variant="subtitle2" gutterBottom sx={{ mb: 2 }}>
+                                            {order.customerHistory?.isReturningCustomer
+                                                ? `Khách hàng thân thiết - đã đặt ${order.customerHistory?.totalOrders} đơn hàng`
+                                                : 'Khách hàng mới - đây là đơn hàng đầu tiên'}
+                                        </Typography>
+
+                                        <Box sx={{ maxHeight: 300, overflow: 'auto' }}>
+                                            {order.customerHistory?.previousOrders.map((historyItem) => (
+                                                <Box
+                                                    key={historyItem._id}
+                                                    sx={{
+                                                        p: 1.5,
+                                                        mb: 1.5,
+                                                        borderRadius: 1,
+                                                        bgcolor: alpha(theme.palette.background.paper, 0.5),
+                                                        border: `1px solid ${alpha(theme.palette.divider, 0.3)}`,
+                                                        '&:hover': {
+                                                            bgcolor: alpha(theme.palette.primary.main, 0.05),
+                                                            borderColor: alpha(theme.palette.primary.main, 0.2)
+                                                        }
+                                                    }}
+                                                >
+                                                    <Grid container spacing={1}>
+                                                        <Grid item xs={12} sm={3}>
+                                                            <Stack spacing={0.5}>
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    Mã đơn hàng
+                                                                </Typography>
+                                                                <Chip
+                                                                    label={historyItem.orderCode}
+                                                                    size="small"
+                                                                    color="primary"
+                                                                    variant="outlined"
+                                                                    sx={{
+                                                                        height: 24,
+                                                                        fontSize: '0.75rem'
+                                                                    }}
+                                                                />
+                                                            </Stack>
+                                                        </Grid>
+                                                        <Grid item xs={12} sm={3}>
+                                                            <Stack spacing={0.5}>
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    Ngày đặt
+                                                                </Typography>
+                                                                <Typography variant="body2" fontWeight="medium">
+                                                                    {formatDate(historyItem.orderDate)}
+                                                                </Typography>
+                                                            </Stack>
+                                                        </Grid>
+                                                        <Grid item xs={12} sm={3}>
+                                                            <Stack spacing={0.5}>
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    Tổng tiền
+                                                                </Typography>
+                                                                <Typography variant="body2" color="primary.main" fontWeight="medium">
+                                                                    {formatCurrency(historyItem.total)}
+                                                                </Typography>
+                                                            </Stack>
+                                                        </Grid>
+                                                        <Grid item xs={12} sm={3}>
+                                                            <Stack spacing={0.5}>
+                                                                <Typography variant="caption" color="text.secondary">
+                                                                    Trạng thái
+                                                                </Typography>
+                                                                <Chip
+                                                                    label={getStatusLabel(historyItem.status)}
+                                                                    size="small"
+                                                                    color={
+                                                                        historyItem.status === ORDER_STATUS.COMPLETED ? 'success' :
+                                                                            historyItem.status === ORDER_STATUS.CANCELLED ? 'error' :
+                                                                                historyItem.status === ORDER_STATUS.ACTIVE ? 'warning' : 'info'
+                                                                    }
+                                                                    sx={{ height: 24, fontSize: '0.75rem' }}
+                                                                />
+                                                            </Stack>
+                                                        </Grid>
+                                                    </Grid>
+                                                </Box>
+                                            ))}
+                                        </Box>
+
+                                        <Box sx={{
+                                            mt: 2,
+                                            p: 1.5,
+                                            borderRadius: 1,
+                                            bgcolor: alpha(theme.palette[getLoyaltyColor(order.customerHistory?.totalOrders || 0, theme)].main, 0.05),
+                                            border: `1px dashed ${alpha(theme.palette[getLoyaltyColor(order.customerHistory?.totalOrders || 0, theme)].main, 0.3)}`
+                                        }}>
+                                            <Stack direction="row" spacing={2} alignItems="center">
+                                                <EmojiEvents color={getLoyaltyColor(order.customerHistory?.totalOrders || 0, theme)} />
+                                                <Box>
+                                                    <Typography variant="subtitle2" fontWeight="medium" color={theme.palette[getLoyaltyColor(order.customerHistory?.totalOrders || 0, theme)].main}>
+                                                        {getLoyaltyLevel(order.customerHistory?.totalOrders || 0)}
+                                                    </Typography>
+                                                    <Typography variant="caption" color="text.secondary">
+                                                        {getLoyaltyDescription(order.customerHistory?.totalOrders || 0)}
+                                                    </Typography>
+                                                </Box>
+                                            </Stack>
+                                        </Box>
+                                    </Box>
+                                </Paper>
+                            )}
 
                             {/* Order Items - Enhanced */}
                             <Paper elevation={0} variant="outlined" sx={{ p: 2 }}>
@@ -731,7 +899,7 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
                                             Lịch sử đơn hàng
                                         </Typography>
                                         <Chip
-                                            label={`${order.timeline.length} sự kiện`}
+                                            label={`${order.timeline?.length || 0} sự kiện`}
                                             size="small"
                                             color="primary"
                                             variant="outlined"
@@ -751,7 +919,7 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
                                                 display: 'none'
                                             }
                                         }}>
-                                            {order.timeline.map((event, index) => (
+                                            {order.timeline?.map((event, index) => (
                                                 <TimelineItem key={index} sx={{ minHeight: 'auto' }}>
                                                     <TimelineSeparator>
                                                         <TimelineDot
@@ -765,7 +933,7 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
                                                             {event.status === ORDER_STATUS.COMPLETED && <AssignmentTurnedIn fontSize="small" />}
                                                             {event.status === ORDER_STATUS.CANCELLED && <Cancel fontSize="small" />}
                                                         </TimelineDot>
-                                                        {index < order.timeline.length - 1 && (
+                                                        {index < (order.timeline?.length || 0) - 1 && (
                                                             <TimelineConnector sx={{
                                                                 bgcolor: alpha(theme.palette.divider, 0.3),
                                                                 minHeight: 30
@@ -834,6 +1002,8 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
                                     </Box>
                                 </Paper>
                             )}
+
+
                         </Stack>
                     )}
                 </DialogContent>
