@@ -182,7 +182,23 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
     };
 
     const handleStatusUpdate = async () => {
-        if (!onStatusUpdate || !selectedStatus) return;
+        console.log('handleStatusUpdate called with:', {
+            onStatusUpdate: !!onStatusUpdate,
+            selectedStatus,
+            note: statusNote,
+            isFullyPaid: isFullyPaid,
+            returnedOnTime: returnedOnTime
+        });
+
+        if (!onStatusUpdate) {
+            console.error('onStatusUpdate callback is not defined');
+            return;
+        }
+
+        if (!selectedStatus) {
+            console.error('selectedStatus is not defined');
+            return;
+        }
 
         setStatusLoading(true);
         try {
@@ -190,6 +206,7 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
                 note: statusNote,
                 isFullyPaid: selectedStatus === ORDER_STATUS.COMPLETED ? isFullyPaid : undefined,
                 returnedOnTime: selectedStatus === ORDER_STATUS.COMPLETED ? returnedOnTime : undefined,
+                orderId: order?._id
             });
             setStatusDialogOpen(false);
         } catch (error) {
@@ -1013,7 +1030,9 @@ const OrderDetailDialog: React.FC<OrderDetailDialogProps> = ({
                                 color="primary"
                                 startIcon={<Edit />}
                                 onClick={() => {
-                                    setSelectedStatus(order.status === ORDER_STATUS.PENDING ? ORDER_STATUS.ACTIVE : ORDER_STATUS.COMPLETED);
+                                    const newStatus = order.status === ORDER_STATUS.PENDING ? ORDER_STATUS.ACTIVE : ORDER_STATUS.COMPLETED;
+                                    console.log('Setting status from', order.status, 'to', newStatus);
+                                    setSelectedStatus(newStatus);
                                     setStatusDialogOpen(true);
                                 }}
                                 disabled={loading || localLoading}

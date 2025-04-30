@@ -60,7 +60,7 @@ const CostumeDialog: React.FC<CostumeDialogProps> = ({
 }) => {
   const theme = useTheme();
   const [previewImages, setPreviewImages] = useState<string[]>(
-    initialValues?.images || []
+    initialValues?.imageUrl ? [initialValues.imageUrl] : []
   );
 
   const formik = useFormik({
@@ -74,7 +74,6 @@ const CostumeDialog: React.FC<CostumeDialogProps> = ({
       imageUrl: '',
       description: '',
       quantityAvailable: 1,
-      quantityRented: 0,
     },
     validationSchema,
     onSubmit: (values) => {
@@ -113,9 +112,6 @@ const CostumeDialog: React.FC<CostumeDialogProps> = ({
     setPreviewImages(newImages);
     formik.setFieldValue('images', newImages);
   };
-
-  const availabilityPercentage =
-    (Number(formik.values.quantityAvailable) / Number(formik.values.quantityAvailable)) * 100 || 0;
 
   return (
     <Dialog open={open} onClose={handleClose} maxWidth="md" fullWidth>
@@ -229,19 +225,6 @@ const CostumeDialog: React.FC<CostumeDialogProps> = ({
                 onChange={formik.handleChange}
                 error={formik.touched.quantityAvailable && Boolean(formik.errors.quantityAvailable)}
                 helperText={formik.touched.quantityAvailable && formik.errors.quantityAvailable}
-              />
-            </Grid>
-            <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Số lượng đã cho thuê"
-                name="quantityRented"
-                type="number"
-                value={formik.values.quantityRented}
-                onChange={formik.handleChange}
-                error={formik.touched.quantityRented && Boolean(formik.errors.quantityRented)}
-                helperText={formik.touched.quantityRented && formik.errors.quantityRented}
-                disabled={!initialValues}
               />
             </Grid>
             <Grid item xs={12}>

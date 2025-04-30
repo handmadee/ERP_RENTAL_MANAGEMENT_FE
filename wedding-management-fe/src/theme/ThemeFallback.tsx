@@ -2,17 +2,16 @@ import React from 'react';
 import { createTheme, Theme } from '@mui/material/styles';
 
 // Tạo một theme mặc định để sử dụng khi theme chính không có sẵn
-export const fallbackTheme = createTheme({
+const fallbackTheme = createTheme({
     palette: {
         primary: { main: '#1976d2', light: '#42a5f5', dark: '#1565c0' },
         warning: { main: '#ff9800', light: '#ffb74d', dark: '#f57c00' },
-        error: { main: '#f44336', light: '#e57373', dark: '#d32f2f' },
-        success: { main: '#4caf50', light: '#81c784', dark: '#388e3c' },
-        info: { main: '#03a9f4', light: '#4fc3f7', dark: '#0288d1' },
-        grey: { 500: '#9e9e9e' },
-        text: { primary: '#212121', secondary: '#757575' },
-        divider: '#e0e0e0',
-        action: { hover: 'rgba(0, 0, 0, 0.04)' }
+        error: { main: '#d32f2f', light: '#ef5350', dark: '#c62828' },
+        success: { main: '#2e7d32', light: '#4caf50', dark: '#1b5e20' },
+        neutral: { main: '#64748B', contrastText: '#fff' },
+        background: { default: '#f5f5f5', paper: '#fff' },
+        text: { primary: '#333', secondary: '#666' },
+        action: { active: '#888', hover: '#f5f5f5' },
     }
 });
 
@@ -63,4 +62,6 @@ export const getStatusLabel = (status: string): string => {
         case 'cancelled': return 'Đã hủy';
         default: return status;
     }
-}; 
+};
+
+export default fallbackTheme; 

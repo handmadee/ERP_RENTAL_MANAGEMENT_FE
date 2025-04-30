@@ -465,6 +465,9 @@ const OrdersPage: React.FC = () => {
   const handleViewOrder = async () => {
     if (selectedOrder?._id) {
       try {
+        // Thiết lập orderToUpdateStatus ngay từ đầu
+        setOrderToUpdateStatus(selectedOrder);
+
         // Hiển thị popup ngay lập tức
         setDialogMode('view');
         setOpenDialog(true);
@@ -475,6 +478,7 @@ const OrdersPage: React.FC = () => {
           console.log('Using cached order details');
           const cachedOrder = ordersCache.get(selectedOrder._id);
           setSelectedOrder(cachedOrder);
+          setOrderToUpdateStatus(cachedOrder); // Cập nhật lại orderToUpdateStatus với dữ liệu mới nhất
           setLoadingDetails(false);
         } else {
           console.log('Fetching order details from API');
@@ -486,6 +490,7 @@ const OrdersPage: React.FC = () => {
               const convertedOrder = convertApiResponseToBackendOrder(response);
               ordersCache.set(selectedOrder._id, convertedOrder);
               setSelectedOrder(convertedOrder);
+              setOrderToUpdateStatus(convertedOrder); // Cập nhật lại orderToUpdateStatus với dữ liệu mới nhất
             } catch (error) {
               console.error('Error loading order details:', error);
               showToast.error('Không thể tải thông tin đơn hàng');
@@ -586,6 +591,7 @@ const OrdersPage: React.FC = () => {
   };
 
   const handleStatusUpdate = async (status: string, data: any) => {
+    console.log('OrdersPage handleStatusUpdate called with:', { status, data, orderId: orderToUpdateStatus?._id });
     if (!orderToUpdateStatus?._id) return;
 
     try {

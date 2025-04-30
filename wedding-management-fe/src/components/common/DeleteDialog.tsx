@@ -7,7 +7,7 @@ import {
     DialogActions,
     Button,
 } from '@mui/material';
-import LoadingButton from '@mui/lab/LoadingButton';
+import { LoadingButton } from '@mui/lab';
 
 interface DeleteDialogProps {
     open: boolean;

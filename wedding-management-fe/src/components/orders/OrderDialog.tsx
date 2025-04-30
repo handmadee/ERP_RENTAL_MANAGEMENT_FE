@@ -83,7 +83,8 @@ import {
   TimelineDot,
 } from '@mui/lab';
 import { ThemeProvider } from '@mui/material/styles';
-import { getStatusColor, getStatusLabel, fallbackTheme } from '@/theme/ThemeFallback';
+import { getStatusColor, getStatusLabel } from '@/theme/ThemeFallback';
+import fallbackTheme from '@/theme/ThemeFallback';
 import { api } from '@/services/api';
 
 export interface OrderItem {
@@ -186,7 +187,7 @@ const OrderFormDialog: React.FC<OrderFormDialogProps> = ({
   loading,
 }) => {
   const theme = useTheme();
-  const isView = mode === 'view';
+  const isView = mode === 'edit' || mode === 'create' ? false : true;
   const title = {
     create: 'Tạo đơn hàng mới',
     edit: 'Chỉnh sửa đơn hàng',
@@ -459,36 +460,29 @@ const OrderFormDialog: React.FC<OrderFormDialogProps> = ({
   const handleStatusChangeConfirm = async (newStatus: string) => {
     const orderId = orderData?.orderDetails?._id || order?.id;
     if (!orderId) return;
-
     setStatusLoading(true);
     try {
       const statusPayload: any = {
         status: newStatus,
       };
-
       if (statusNote) {
         statusPayload.note = statusNote;
       }
-
       // Add additional fields for completed status
       if (newStatus === ORDER_STATUS.COMPLETED) {
         statusPayload.isFullyPaid = isFullyPaid;
         statusPayload.returnedOnTime = returnedOnTime;
       }
-
       // Call API to update status using the api service
       const response = await api.patch(`orders/${orderId}/status`, statusPayload);
       const result = response.data;
-
       // Update order status
       formik.setFieldValue('status', newStatus);
-
       // If isFullyPaid is true, update the deposit and remaining amount
       if (newStatus === ORDER_STATUS.COMPLETED && isFullyPaid) {
         formik.setFieldValue('deposit', formik.values.total);
         formik.setFieldValue('remainingAmount', 0);
       }
-
       // Update timeline
       if (result.data.timeline) {
         setOrderTimeline(result.data.timeline);
@@ -523,7 +517,6 @@ const OrderFormDialog: React.FC<OrderFormDialogProps> = ({
   // Add this component to display the previous orders section
   const PreviousOrdersList = ({ previousOrders }: { previousOrders: any[] }) => {
     if (!previousOrders || previousOrders.length === 0) return null;
-
     return (
       <Box sx={{ mt: 2 }}>
         <Typography variant="subtitle2" gutterBottom>

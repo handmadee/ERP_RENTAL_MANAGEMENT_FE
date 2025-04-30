@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Form, Input, InputNumber, Select, Button, Upload, message } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd/es/upload/interface';
-import { costumeService } from '../../services';
+import costumeService from '../../services/costumeService';
 import type { Costume } from '../../types/costume';
 
 const { Option } = Select;
@@ -171,7 +171,7 @@ const CreateCostumeForm: React.FC<CreateCostumeFormProps> = ({ onSuccess }) => {
                 label="Price"
                 rules={[{ required: true, message: 'Please input price!' }]}
             >
-                <InputNumber
+                <InputNumber<string>
                     min={0}
                     style={{ width: '100%' }}
                     formatter={value => `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}

@@ -1,6 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { authService, UserProfile } from '../services/authService';
-import { showToast } from '@/components/common/Toast';
+import { authService } from '../services/authService';
 
 export enum UserRole {
     ADMIN = 'admin',
@@ -40,7 +39,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     const login = async (username: string, password: string) => {
         const response = await authService.login(username, password);
-        setUser(response.user);
+        // Convert UserProfile from authService to User type
+        const userData: User = {
+            id: response.user.id,
+            username: response.user.email,
+            role: response.user.role
+        };
+        setUser(userData);
         setIsAuthenticated(true);
     };
 

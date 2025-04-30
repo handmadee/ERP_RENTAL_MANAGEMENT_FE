@@ -245,7 +245,7 @@ const AuthLayout: React.FC<AuthLayoutProps> = ({ children }) => {
                   transition={{ delay: 0.2 }}
                 >
                   <Typography variant="h5" fontWeight="bold" gutterBottom>
-                    {window.location.pathname.includes('/login') ? 'Đăng Nhập' :
+                    {window.location.pathname.includes('/login') ? 'Đăng Nhập Hệ Thống Quản Trị' :
                       window.location.pathname.includes('/register') ? 'Đăng Ký' : 'Xác Thực'}
                   </Typography>
                   <Typography variant="body2" color="text.secondary">

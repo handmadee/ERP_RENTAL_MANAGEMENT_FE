@@ -38,9 +38,12 @@ import {
     Schedule as ScheduleIcon,
     Close as CloseIcon,
     ShoppingCart as RentedIcon,
+    ShoppingCart,
     LocalOffer as PriceIcon,
     Assessment as MetricsIcon,
     Refresh as RefreshIcon,
+    Category as CategoryIcon,
+    InfoOutlined as InfoIcon,
 } from '@mui/icons-material';
 import { format } from 'date-fns';
 import { vi } from 'date-fns/locale';
@@ -127,7 +130,7 @@ const CostumeDetail: React.FC<CostumeDetailProps> = ({ costumeId, onClose }) => 
             case 'Bảo trì':
                 return theme.palette.error;
             default:
-                return theme.palette.grey;
+                return { main: theme.palette.grey[500], light: theme.palette.grey[300] };
         }
     };
 
@@ -370,7 +373,7 @@ const CostumeDetail: React.FC<CostumeDetailProps> = ({ costumeId, onClose }) => 
                                     </ListItem>
                                     <ListItem>
                                         <ListItemIcon>
-                                            <`TrendingUp` color="action" />
+                                            <TrendingIcon color="action" />
                                         </ListItemIcon>
                                         <ListItemText
                                             primary="Tỷ lệ sử dụng hiện tại"
@@ -379,7 +382,7 @@ const CostumeDetail: React.FC<CostumeDetailProps> = ({ costumeId, onClose }) => 
                                     </ListItem>
                                     <ListItem>
                                         <ListItemIcon>
-                                            <Assessment color="action" />
+                                            <MetricsIcon color="action" />
                                         </ListItemIcon>
                                         <ListItemText
                                             primary="Mức độ phổ biến"
