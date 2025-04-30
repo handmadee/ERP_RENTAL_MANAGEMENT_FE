@@ -6,188 +6,124 @@ import {
   DialogActions,
   Button,
   TextField,
-  List,
-  ListItem,
-  ListItemText,
-  ListItemSecondaryAction,
-  IconButton,
-  Box,
+  Stack,
   Typography,
-  Divider,
-  useTheme,
-  alpha,
 } from '@mui/material';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-} from '@mui/icons-material';
+import { Add, Edit, Delete } from '@mui/icons-material';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
-import { showToast } from '../common/Toast';
-
-interface Category {
-  id: string;
-  name: string;
-  description?: string;
-}
+import { Category } from '../../types/costume';
 
 interface CategoryDialogProps {
   open: boolean;
   onClose: () => void;
-  categories: Category[];
-  onAddCategory: (category: Omit<Category, 'id'>) => void;
-  onEditCategory: (category: Category) => void;
-  onDeleteCategory: (id: string) => void;
+  onAdd: (category: Omit<Category, '_id' | 'createdAt' | 'updatedAt' | 'productCount'>) => void;
+  onEdit: (category: Category) => void;
+  onDelete: (id: string) => void;
+  editingCategory: Category | null;
 }
 
 const validationSchema = Yup.object({
-  name: Yup.string()
-    .required('Tên danh mục là bắt buộc')
-    .min(2, 'Tên danh mục phải có ít nhất 2 ký tự'),
+  name: Yup.string().required('Tên danh mục là bắt buộc'),
+  color: Yup.string().required('Màu sắc là bắt buộc'),
   description: Yup.string(),
 });
 
-export const CategoryDialog: React.FC<CategoryDialogProps> = ({
+const CategoryDialog: React.FC<CategoryDialogProps> = ({
   open,
   onClose,
-  categories,
-  onAddCategory,
-  onEditCategory,
-  onDeleteCategory,
+  onAdd,
+  onEdit,
+  onDelete,
+  editingCategory,
 }) => {
-  const theme = useTheme();
-  const [editingCategory, setEditingCategory] = React.useState<Category | null>(null);
-
   const formik = useFormik({
-    initialValues: {
+    initialValues: editingCategory || {
       name: '',
+      color: '#1976d2',
       description: '',
     },
     validationSchema,
-    onSubmit: (values, { resetForm }) => {
+    onSubmit: (values) => {
       if (editingCategory) {
-        onEditCategory({ ...editingCategory, ...values });
-        showToast.success('Cập nhật danh mục thành công!');
+        onEdit({ ...editingCategory, ...values });
       } else {
-        onAddCategory(values);
-        showToast.success('Thêm danh mục thành công!');
+        onAdd(values);
       }
-      resetForm();
-      setEditingCategory(null);
+      onClose();
     },
+    enableReinitialize: true,
   });
-
-  const handleEdit = (category: Category) => {
-    setEditingCategory(category);
-    formik.setValues({
-      name: category.name,
-      description: category.description || '',
-    });
-  };
-
-  const handleDelete = (id: string) => {
-    onDeleteCategory(id);
-    showToast.success('Xóa danh mục thành công!');
-  };
-
-  const handleCancel = () => {
-    formik.resetForm();
-    setEditingCategory(null);
-  };
 
   return (
     <Dialog open={open} onClose={onClose} maxWidth="sm" fullWidth>
-      <DialogTitle>
-        <Typography variant="h6" component="div">
-          Quản lý danh mục
-        </Typography>
-      </DialogTitle>
-      <DialogContent dividers>
-        <Box component="form" onSubmit={formik.handleSubmit} sx={{ mb: 3 }}>
-          <TextField
-            fullWidth
-            label="Tên danh mục"
-            name="name"
-            value={formik.values.name}
-            onChange={formik.handleChange}
-            error={formik.touched.name && Boolean(formik.errors.name)}
-            helperText={formik.touched.name && formik.errors.name}
-            sx={{ mb: 2 }}
-          />
-          <TextField
-            fullWidth
-            label="Mô tả"
-            name="description"
-            multiline
-            rows={2}
-            value={formik.values.description}
-            onChange={formik.handleChange}
-            error={formik.touched.description && Boolean(formik.errors.description)}
-            helperText={formik.touched.description && formik.errors.description}
-          />
-          <Box sx={{ mt: 2, display: 'flex', gap: 1 }}>
-            <Button
-              type="submit"
-              variant="contained"
-              startIcon={editingCategory ? <EditIcon /> : <AddIcon />}
+      <form onSubmit={formik.handleSubmit}>
+        <DialogTitle>
+          <Typography variant="h6" fontWeight="bold">
+            {editingCategory ? 'Chỉnh sửa danh mục' : 'Thêm danh mục mới'}
+          </Typography>
+        </DialogTitle>
+        <DialogContent>
+          <Stack spacing={3} sx={{ mt: 2 }}>
+            <TextField
+              fullWidth
+              label="Tên danh mục"
+              name="name"
+              value={formik.values.name}
+              onChange={formik.handleChange}
+              error={formik.touched.name && Boolean(formik.errors.name)}
+              helperText={formik.touched.name && formik.errors.name}
+            />
+            <TextField
+              fullWidth
+              label="Màu sắc"
+              name="color"
+              type="color"
+              value={formik.values.color}
+              onChange={formik.handleChange}
+              error={formik.touched.color && Boolean(formik.errors.color)}
+              helperText={formik.touched.color && formik.errors.color}
               sx={{
-                background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
-              }}
-            >
-              {editingCategory ? 'Cập nhật' : 'Thêm mới'}
-            </Button>
-            {editingCategory && (
-              <Button variant="outlined" onClick={handleCancel}>
-                Hủy
-              </Button>
-            )}
-          </Box>
-        </Box>
-
-        <Divider sx={{ my: 2 }} />
-
-        <List>
-          {categories.map((category) => (
-            <ListItem
-              key={category.id}
-              sx={{
-                borderRadius: 1,
-                mb: 1,
-                '&:hover': {
-                  bgcolor: alpha(theme.palette.primary.main, 0.04),
+                '& input': {
+                  height: 50,
+                  padding: 1,
                 },
               }}
+            />
+            <TextField
+              fullWidth
+              label="Mô tả"
+              name="description"
+              multiline
+              rows={3}
+              value={formik.values.description}
+              onChange={formik.handleChange}
+              error={formik.touched.description && Boolean(formik.errors.description)}
+              helperText={formik.touched.description && formik.errors.description}
+            />
+          </Stack>
+        </DialogContent>
+        <DialogActions>
+          {editingCategory && (
+            <Button
+              color="error"
+              onClick={() => {
+                onDelete(editingCategory._id);
+                onClose();
+              }}
+              startIcon={<Delete />}
             >
-              <ListItemText
-                primary={category.name}
-                secondary={category.description}
-              />
-              <ListItemSecondaryAction>
-                <IconButton
-                  edge="end"
-                  aria-label="edit"
-                  onClick={() => handleEdit(category)}
-                  sx={{ color: theme.palette.primary.main }}
-                >
-                  <EditIcon />
-                </IconButton>
-                <IconButton
-                  edge="end"
-                  aria-label="delete"
-                  onClick={() => handleDelete(category.id)}
-                  sx={{ color: theme.palette.error.main }}
-                >
-                  <DeleteIcon />
-                </IconButton>
-              </ListItemSecondaryAction>
-            </ListItem>
-          ))}
-        </List>
-      </DialogContent>
-      <DialogActions>
-        <Button onClick={onClose}>Đóng</Button>
-      </DialogActions>
+              Xóa
+            </Button>
+          )}
+          <Button onClick={onClose}>Hủy</Button>
+          <Button type="submit" variant="contained" startIcon={editingCategory ? <Edit /> : <Add />}>
+            {editingCategory ? 'Cập nhật' : 'Thêm mới'}
+          </Button>
+        </DialogActions>
+      </form>
     </Dialog>
   );
-}; 
+};
+
+export default CategoryDialog; 

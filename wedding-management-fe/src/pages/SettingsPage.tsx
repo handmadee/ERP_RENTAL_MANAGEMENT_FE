@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Box,
   Card,
@@ -15,6 +15,8 @@ import {
   styled,
   useTheme,
   alpha,
+  CircularProgress,
+  MenuItem,
 } from '@mui/material';
 import {
   Facebook,
@@ -35,6 +37,10 @@ import {
 import { motion } from 'framer-motion';
 import { useFormik } from 'formik';
 import * as Yup from 'yup';
+import { showToast } from '@/components/common/Toast';
+import { authService, Settings, NotificationSettings } from '@/services/authService';
+import { format } from 'date-fns';
+import { vi } from 'date-fns/locale';
 
 // Styled components
 const VisuallyHiddenInput = styled('input')({
@@ -55,13 +61,45 @@ interface TabPanelProps {
   value: number;
 }
 
-const validationSchema = Yup.object({
-  companyName: Yup.string().required('Tên công ty là bắt buộc'),
+interface ProfileFormValues {
+  fullName: string;
+  email: string;
+  phone: string;
+  address: string;
+  avatar?: string;
+}
+
+interface CompanyFormValues {
+  companyName: string;
+  currency: string;
+  language: string;
+  registrationSecret: string;
+}
+
+const profileValidationSchema = Yup.object({
+  fullName: Yup.string().required('Họ tên là bắt buộc'),
   email: Yup.string()
     .email('Email không hợp lệ')
     .required('Email là bắt buộc'),
   phone: Yup.string().required('Số điện thoại là bắt buộc'),
   address: Yup.string().required('Địa chỉ là bắt buộc'),
+});
+
+const passwordValidationSchema = Yup.object({
+  currentPassword: Yup.string().required('Mật khẩu hiện tại là bắt buộc'),
+  newPassword: Yup.string()
+    .required('Mật khẩu mới là bắt buộc')
+    .min(6, 'Mật khẩu phải có ít nhất 6 ký tự'),
+  confirmPassword: Yup.string()
+    .required('Xác nhận mật khẩu là bắt buộc')
+    .oneOf([Yup.ref('newPassword')], 'Mật khẩu không khớp'),
+});
+
+const companyValidationSchema = Yup.object({
+  companyName: Yup.string().required('Tên công ty là bắt buộc'),
+  currency: Yup.string().required('Tiền tệ là bắt buộc'),
+  language: Yup.string().required('Ngôn ngữ là bắt buộc'),
+  registrationSecret: Yup.string().required('Mã bảo mật là bắt buộc'),
 });
 
 function TabPanel(props: TabPanelProps) {
@@ -83,30 +121,185 @@ function TabPanel(props: TabPanelProps) {
 const SettingsPage: React.FC = () => {
   const theme = useTheme();
   const [tabValue, setTabValue] = useState(0);
-  const [notifications, setNotifications] = useState({
+  const [notifications, setNotifications] = useState<NotificationSettings>({
     email: true,
     push: true,
     sms: false,
   });
+  const [isLoading, setIsLoading] = useState(false);
+  const [isPasswordLoading, setIsPasswordLoading] = useState(false);
+  const [avatarLoading, setAvatarLoading] = useState(false);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [lastLoginTime, setLastLoginTime] = useState<Date | null>(null);
 
-  const formik = useFormik({
+  const profileFormik = useFormik<ProfileFormValues>({
     initialValues: {
-      companyName: 'Wedding Management',
-      email: 'contact@weddingmanagement.com',
-      phone: '+84 123 456 789',
-      address: '123 Wedding Street, City, Country',
-      currency: 'VND',
-      language: 'vi',
+      fullName: '',
+      email: '',
+      phone: '',
+      address: '',
+      avatar: '',
     },
-    validationSchema,
-    onSubmit: (values) => {
-      console.log(values);
-      // Handle form submission
+    validationSchema: profileValidationSchema,
+    onSubmit: async (values) => {
+      try {
+        setIsLoading(true);
+        await authService.updateProfile({
+          fullName: values.fullName,
+          phone: values.phone,
+          address: values.address,
+        });
+        showToast.success('Cập nhật thông tin thành công!');
+      } catch (error: any) {
+        showToast.error(error?.response?.data?.message || 'Cập nhật thất bại');
+      } finally {
+        setIsLoading(false);
+      }
     },
   });
 
-  const handleTabChange = (event: React.SyntheticEvent, newValue: number) => {
-    setTabValue(newValue);
+  const passwordFormik = useFormik({
+    initialValues: {
+      currentPassword: '',
+      newPassword: '',
+      confirmPassword: '',
+    },
+    validationSchema: passwordValidationSchema,
+    onSubmit: async (values) => {
+      try {
+        setIsPasswordLoading(true);
+        await authService.changePassword({
+          currentPassword: values.currentPassword,
+          newPassword: values.newPassword,
+        });
+        showToast.success('Đổi mật khẩu thành công!');
+        passwordFormik.resetForm();
+      } catch (error: any) {
+        showToast.error(error?.response?.data?.message || 'Đổi mật khẩu thất bại');
+      } finally {
+        setIsPasswordLoading(false);
+      }
+    },
+  });
+
+  const companyFormik = useFormik<CompanyFormValues>({
+    initialValues: {
+      companyName: '',
+      currency: 'VND',
+      language: 'vi',
+      registrationSecret: '',
+    },
+    validationSchema: companyValidationSchema,
+    onSubmit: async (values) => {
+      try {
+        setIsLoading(true);
+        const updatedSettings = await authService.updateSettings({
+          ...values,
+          email: profileFormik.values.email,
+          phone: profileFormik.values.phone || '',
+          address: profileFormik.values.address || '',
+          twoFactorEnabled: settings?.security?.twoFactorEnabled || false,
+          notifications: notifications
+        });
+        setSettings(updatedSettings);
+        showToast.success('Cập nhật thông tin công ty thành công!');
+      } catch (error: any) {
+        showToast.error(error?.response?.data?.message || 'Cập nhật thất bại');
+      } finally {
+        setIsLoading(false);
+      }
+    },
+  });
+
+  useEffect(() => {
+    const loadData = async () => {
+      try {
+        const [settingsData, profile] = await Promise.all([
+          authService.getSettings(),
+          authService.getProfile(),
+        ]);
+
+        setSettings(settingsData);
+        setNotifications(settingsData.notifications);
+        if (profile.lastLogin) {
+          const lastLoginDate = new Date(profile.lastLogin);
+          if (!isNaN(lastLoginDate.getTime())) {
+            setLastLoginTime(lastLoginDate);
+          }
+        }
+
+        // Set company form values
+        companyFormik.setValues({
+          companyName: settingsData.companyName || '',
+          currency: settingsData.currency || 'VND',
+          language: settingsData.language || 'vi',
+          registrationSecret: settingsData.registrationSecret || '',
+        });
+
+        // Set profile form values
+        profileFormik.setValues({
+          fullName: profile.fullName || '',
+          email: settingsData.email || profile.email || '',
+          phone: settingsData.phone || profile.phone || '',
+          address: settingsData.address || profile.address || '',
+          avatar: profile.avatar || '',
+        });
+
+      } catch (error) {
+        console.error('Failed to load data:', error);
+        showToast.error('Không thể tải thông tin cài đặt');
+      }
+    };
+    loadData();
+  }, []);
+
+  const handleAvatarChange = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setAvatarLoading(true);
+      const result = await authService.uploadAvatar(file);
+      await authService.updateProfile({
+        fullName: profileFormik.values.fullName,
+        phone: profileFormik.values.phone,
+        address: profileFormik.values.address,
+        avatar: result.avatarUrl,
+      });
+      profileFormik.setFieldValue('avatar', result.avatarUrl);
+      showToast.success('Cập nhật ảnh đại diện thành công!');
+    } catch (error: any) {
+      showToast.error(error?.response?.data?.message || 'Cập nhật ảnh đại diện thất bại');
+    } finally {
+      setAvatarLoading(false);
+    }
+  };
+
+  const handleNotificationChange = async (type: keyof NotificationSettings) => {
+    try {
+      const newNotifications = {
+        ...notifications,
+        [type]: !notifications[type],
+      };
+      setNotifications(newNotifications);
+
+      // Include all required fields when updating settings
+      await authService.updateSettings({
+        companyName: companyFormik.values.companyName,
+        email: profileFormik.values.email,
+        phone: profileFormik.values.phone || '',
+        address: profileFormik.values.address || '',
+        currency: companyFormik.values.currency,
+        language: companyFormik.values.language,
+        registrationSecret: companyFormik.values.registrationSecret,
+        twoFactorEnabled: settings?.twoFactorEnabled || false,
+        notifications: newNotifications
+      });
+    } catch (error: any) {
+      showToast.error('Không thể cập nhật cài đặt thông báo');
+      // Revert the change on error
+      setNotifications(notifications);
+    }
   };
 
   return (
@@ -116,14 +309,21 @@ const SettingsPage: React.FC = () => {
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
-        <Typography variant="h4" sx={{ mb: 4, color: theme.palette.text.primary }}>
-          Cài đặt hệ thống
-        </Typography>
+        <Box sx={{ mb: 4 }}>
+          <Typography variant="h4" sx={{ color: theme.palette.text.primary }}>
+            Cài đặt hệ thống
+          </Typography>
+          {lastLoginTime && (
+            <Typography variant="body2" sx={{ color: theme.palette.text.secondary, mt: 1 }}>
+              Đăng nhập lần cuối: {format(lastLoginTime, 'HH:mm - dd/MM/yyyy', { locale: vi })}
+            </Typography>
+          )}
+        </Box>
 
         <Card sx={{ mb: 3 }}>
           <Tabs
             value={tabValue}
-            onChange={handleTabChange}
+            onChange={(e, newValue) => setTabValue(newValue)}
             sx={{
               px: 3,
               pt: 2,
@@ -139,100 +339,103 @@ const SettingsPage: React.FC = () => {
             <Tab
               icon={<AccountBalance sx={{ fontSize: '1.25rem' }} />}
               iconPosition="start"
-              label="Thông tin doanh nghiệp"
-            />
-            <Tab
-              icon={<Notifications sx={{ fontSize: '1.25rem' }} />}
-              iconPosition="start"
-              label="Thông báo"
+              label="Thông tin ứng dụng"
             />
             <Tab
               icon={<Security sx={{ fontSize: '1.25rem' }} />}
               iconPosition="start"
               label="Bảo mật"
             />
+            <Tab
+              icon={<Notifications sx={{ fontSize: '1.25rem' }} />}
+              iconPosition="start"
+              label="Thông báo"
+            />
           </Tabs>
 
           <TabPanel value={tabValue} index={0}>
             <Box
               component="form"
-              onSubmit={formik.handleSubmit}
+              onSubmit={companyFormik.handleSubmit}
               sx={{ p: 3 }}
             >
               <Grid container spacing={3}>
-                <Grid item xs={12}>
-                  <Stack direction="row" spacing={2} alignItems="center">
-                    <Avatar
-                      src="/path/to/logo.png"
-                      sx={{ width: 64, height: 64 }}
-                    />
-                    <Box>
-                      <Typography variant="subtitle1" sx={{ mb: 1 }}>
-                        Logo công ty
-                      </Typography>
-                      <Button
-                        component="label"
-                        variant="outlined"
-                        startIcon={<PhotoCamera />}
-                        size="small"
-                      >
-                        Tải lên
-                        <VisuallyHiddenInput type="file" />
-                      </Button>
-                    </Box>
-                  </Stack>
-                </Grid>
-
                 <Grid item xs={12} md={6}>
                   <TextField
                     fullWidth
-                    label="Tên công ty"
+                    label="Tên ứng dụng"
                     name="companyName"
-                    value={formik.values.companyName}
-                    onChange={formik.handleChange}
-                    error={
-                      formik.touched.companyName &&
-                      Boolean(formik.errors.companyName)
-                    }
-                    helperText={
-                      formik.touched.companyName && formik.errors.companyName
-                    }
+                    value={companyFormik.values.companyName}
+                    onChange={companyFormik.handleChange}
+                    error={companyFormik.touched.companyName && Boolean(companyFormik.errors.companyName)}
+                    helperText={companyFormik.touched.companyName && companyFormik.errors.companyName}
                   />
                 </Grid>
 
                 <Grid item xs={12} md={6}>
                   <TextField
                     fullWidth
-                    label="Email"
+                    label="Email hệ thống"
                     name="email"
-                    value={formik.values.email}
-                    onChange={formik.handleChange}
-                    error={formik.touched.email && Boolean(formik.errors.email)}
-                    helperText={formik.touched.email && formik.errors.email}
+                    value={profileFormik.values.email}
+                    onChange={(e) => {
+                      profileFormik.setFieldValue('email', e.target.value);
+                    }}
+                    error={profileFormik.touched.email && Boolean(profileFormik.errors.email)}
+                    helperText={profileFormik.touched.email && profileFormik.errors.email}
                   />
                 </Grid>
 
                 <Grid item xs={12} md={6}>
                   <TextField
                     fullWidth
-                    label="Số điện thoại"
+                    label="Số điện thoại hệ thống"
                     name="phone"
-                    value={formik.values.phone}
-                    onChange={formik.handleChange}
-                    error={formik.touched.phone && Boolean(formik.errors.phone)}
-                    helperText={formik.touched.phone && formik.errors.phone}
+                    value={profileFormik.values.phone}
+                    onChange={(e) => {
+                      profileFormik.setFieldValue('phone', e.target.value);
+                    }}
                   />
                 </Grid>
 
                 <Grid item xs={12} md={6}>
                   <TextField
                     fullWidth
-                    label="Địa chỉ"
+                    label="Địa chỉ hệ thống"
                     name="address"
-                    value={formik.values.address}
-                    onChange={formik.handleChange}
-                    error={formik.touched.address && Boolean(formik.errors.address)}
-                    helperText={formik.touched.address && formik.errors.address}
+                    value={profileFormik.values.address}
+                    onChange={(e) => {
+                      profileFormik.setFieldValue('address', e.target.value);
+                    }}
+                  />
+                </Grid>
+
+                <Grid item xs={12} md={6}>
+                  <TextField
+                    fullWidth
+                    label="Mã bảo mật đăng ký"
+                    name="registrationSecret"
+                    value={companyFormik.values.registrationSecret}
+                    onChange={companyFormik.handleChange}
+                    error={companyFormik.touched.registrationSecret && Boolean(companyFormik.errors.registrationSecret)}
+                    helperText={
+                      (companyFormik.touched.registrationSecret && companyFormik.errors.registrationSecret) ||
+                      'Mã này sẽ được yêu cầu khi đăng ký tài khoản mới'
+                    }
+                    InputProps={{
+                      endAdornment: (
+                        <Button
+                          size="small"
+                          onClick={() => {
+                            const newSecret = Math.random().toString(36).substring(2, 15).toUpperCase();
+                            companyFormik.setFieldValue('registrationSecret', newSecret);
+                          }}
+                          sx={{ whiteSpace: 'nowrap' }}
+                        >
+                          Tạo mã mới
+                        </Button>
+                      ),
+                    }}
                   />
                 </Grid>
 
@@ -242,14 +445,11 @@ const SettingsPage: React.FC = () => {
                     select
                     label="Tiền tệ"
                     name="currency"
-                    value={formik.values.currency}
-                    onChange={formik.handleChange}
-                    SelectProps={{
-                      native: true,
-                    }}
+                    value={companyFormik.values.currency}
+                    onChange={companyFormik.handleChange}
                   >
-                    <option value="VND">VND - Việt Nam Đồng</option>
-                    <option value="USD">USD - US Dollar</option>
+                    <MenuItem value="VND">VND - Việt Nam Đồng</MenuItem>
+                    <MenuItem value="USD">USD - US Dollar</MenuItem>
                   </TextField>
                 </Grid>
 
@@ -259,14 +459,11 @@ const SettingsPage: React.FC = () => {
                     select
                     label="Ngôn ngữ"
                     name="language"
-                    value={formik.values.language}
-                    onChange={formik.handleChange}
-                    SelectProps={{
-                      native: true,
-                    }}
+                    value={companyFormik.values.language}
+                    onChange={companyFormik.handleChange}
                   >
-                    <option value="vi">Tiếng Việt</option>
-                    <option value="en">English</option>
+                    <MenuItem value="vi">Tiếng Việt</MenuItem>
+                    <MenuItem value="en">English</MenuItem>
                   </TextField>
                 </Grid>
               </Grid>
@@ -275,19 +472,71 @@ const SettingsPage: React.FC = () => {
                 <Button
                   type="submit"
                   variant="contained"
-                  startIcon={<Save />}
+                  startIcon={isLoading ? <CircularProgress size={20} /> : <Save />}
+                  disabled={isLoading}
                   sx={{
                     background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
                     boxShadow: `0 8px 16px ${alpha(theme.palette.primary.main, 0.24)}`,
                   }}
                 >
-                  Lưu thay đổi
+                  {isLoading ? 'Đang lưu...' : 'Lưu thay đổi'}
                 </Button>
               </Box>
             </Box>
           </TabPanel>
 
           <TabPanel value={tabValue} index={1}>
+            <Box
+              component="form"
+              onSubmit={passwordFormik.handleSubmit}
+              sx={{ p: 3 }}
+            >
+              <Typography variant="h6" sx={{ mb: 3 }}>
+                Cài đặt bảo mật
+              </Typography>
+
+              <Card
+                sx={{
+                  p: 2,
+                  mb: 3,
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'space-between',
+                }}
+              >
+                <Box>
+                  <Typography variant="subtitle1">Xác thực hai yếu tố</Typography>
+                  <Typography variant="body2" color="text.secondary">
+                    Bật xác thực hai yếu tố để tăng cường bảo mật
+                  </Typography>
+                </Box>
+                <Switch
+                  checked={settings?.twoFactorEnabled || false}
+                  onChange={(e) => {
+                    if (settings) {
+                      const newTwoFactorEnabled = e.target.checked;
+                      setSettings({ ...settings, twoFactorEnabled: newTwoFactorEnabled });
+
+                      // Include all required fields when updating settings
+                      authService.updateSettings({
+                        companyName: companyFormik.values.companyName,
+                        email: profileFormik.values.email,
+                        phone: profileFormik.values.phone || '',
+                        address: profileFormik.values.address || '',
+                        currency: companyFormik.values.currency,
+                        language: companyFormik.values.language,
+                        registrationSecret: companyFormik.values.registrationSecret,
+                        twoFactorEnabled: newTwoFactorEnabled,
+                        notifications: notifications
+                      });
+                    }
+                  }}
+                />
+              </Card>
+            </Box>
+          </TabPanel>
+
+          <TabPanel value={tabValue} index={2}>
             <Box sx={{ p: 3 }}>
               <Typography variant="h6" sx={{ mb: 3 }}>
                 Cài đặt thông báo
@@ -310,12 +559,7 @@ const SettingsPage: React.FC = () => {
                   </Box>
                   <Switch
                     checked={notifications.email}
-                    onChange={(e) =>
-                      setNotifications({
-                        ...notifications,
-                        email: e.target.checked,
-                      })
-                    }
+                    onChange={() => handleNotificationChange('email')}
                   />
                 </Card>
 
@@ -335,12 +579,7 @@ const SettingsPage: React.FC = () => {
                   </Box>
                   <Switch
                     checked={notifications.push}
-                    onChange={(e) =>
-                      setNotifications({
-                        ...notifications,
-                        push: e.target.checked,
-                      })
-                    }
+                    onChange={() => handleNotificationChange('push')}
                   />
                 </Card>
 
@@ -360,76 +599,8 @@ const SettingsPage: React.FC = () => {
                   </Box>
                   <Switch
                     checked={notifications.sms}
-                    onChange={(e) =>
-                      setNotifications({
-                        ...notifications,
-                        sms: e.target.checked,
-                      })
-                    }
+                    onChange={() => handleNotificationChange('sms')}
                   />
-                </Card>
-              </Stack>
-            </Box>
-          </TabPanel>
-
-          <TabPanel value={tabValue} index={2}>
-            <Box sx={{ p: 3 }}>
-              <Typography variant="h6" sx={{ mb: 3 }}>
-                Cài đặt bảo mật
-              </Typography>
-
-              <Stack spacing={3}>
-                <Card sx={{ p: 2 }}>
-                  <Typography variant="subtitle1" sx={{ mb: 2 }}>
-                    Đổi mật khẩu
-                  </Typography>
-                  <Grid container spacing={2}>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        type="password"
-                        label="Mật khẩu hiện tại"
-                        name="currentPassword"
-                      />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        type="password"
-                        label="Mật khẩu mới"
-                        name="newPassword"
-                      />
-                    </Grid>
-                    <Grid item xs={12}>
-                      <TextField
-                        fullWidth
-                        type="password"
-                        label="Xác nhận mật khẩu mới"
-                        name="confirmPassword"
-                      />
-                    </Grid>
-                  </Grid>
-                  <Box sx={{ mt: 2 }}>
-                    <Button
-                      variant="contained"
-                      color="primary"
-                      startIcon={<Save />}
-                    >
-                      Cập nhật mật khẩu
-                    </Button>
-                  </Box>
-                </Card>
-
-                <Card sx={{ p: 2 }}>
-                  <Typography variant="subtitle1" sx={{ mb: 2 }}>
-                    Xác thực hai yếu tố
-                  </Typography>
-                  <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                    Bảo vệ tài khoản của bạn bằng xác thực hai yếu tố
-                  </Typography>
-                  <Button variant="outlined" color="primary">
-                    Thiết lập 2FA
-                  </Button>
                 </Card>
               </Stack>
             </Box>

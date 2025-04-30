@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Box,
   Typography,
@@ -34,6 +34,8 @@ import {
   Cancel as CancelIcon,
   Sort as SortIcon,
   ContentCopy as CopyIcon,
+  Visibility as VisibilityIcon,
+  Timeline as TimelineIcon,
 } from '@mui/icons-material';
 import { DataGrid, GridColDef, GridRenderCellParams } from '@mui/x-data-grid';
 import { useForm, Controller } from 'react-hook-form';
@@ -42,24 +44,52 @@ import * as yup from 'yup';
 import { motion } from 'framer-motion';
 import { showToast } from '@/components/common/Toast';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
+import { customerService, Customer as CustomerType, translateOrderStatus } from '@/services/customerService';
+import { format } from 'date-fns';
+import { vi } from 'date-fns/locale';
 
-// Định nghĩa kiểu dữ liệu cho khách hàng
+// Update the Customer interface to match the API
 interface Customer {
-  id: string;
+  _id: string;
   customerCode: string;
   fullName: string;
   phone: string;
   address: string;
-  note: string;
+  note?: string;
+  createdAt: string;
   totalSpent: number;
-  totalOrders: number;
-  successfulOrders: number;
-  canceledOrders: number;
+  orderStats: {
+    total: number;
+    pending: number;
+    active: number;
+    completed: number;
+    cancelled: number;
+  };
+  status: string;
+  email?: string;
+}
+
+interface Order {
+  _id: string;
+  orderCode: string;
+  status: string;
+  total: number;
+  orderDate: string;
+  returnDate: string;
+  items: Array<{
+    costumeId: string;
+    quantity: number;
+    price: number;
+    subtotal: number;
+  }>;
+}
+
+interface CustomerDetails extends Customer {
+  orders: Order[];
 }
 
 // Schema validation cho form
 const schema = yup.object({
-  customerCode: yup.string().required('Mã khách hàng là bắt buộc'),
   fullName: yup
     .string()
     .required('Họ và tên là bắt buộc')
@@ -68,53 +98,32 @@ const schema = yup.object({
     .string()
     .required('Số điện thoại là bắt buộc')
     .matches(/^[0-9]{10}$/, 'Số điện thoại không hợp lệ'),
-  address: yup.string().required('Địa chỉ là bắt buộc'),
-  note: yup.string(),
-  totalSpent: yup
-    .number()
-    .min(0, 'Số tiền không thể âm')
-    .typeError('Vui lòng nhập số'),
-  totalOrders: yup
-    .number()
-    .min(0, 'Số đơn hàng không thể âm')
-    .integer('Số đơn hàng phải là số nguyên')
-    .typeError('Vui lòng nhập số'),
-  successfulOrders: yup
-    .number()
-    .min(0, 'Số đơn thành công không thể âm')
-    .integer('Số đơn thành công phải là số nguyên')
-    .typeError('Vui lòng nhập số'),
-  canceledOrders: yup
-    .number()
-    .min(0, 'Số đơn hủy không thể âm')
-    .integer('Số đơn hủy phải là số nguyên')
-    .typeError('Vui lòng nhập số'),
+  address: yup
+    .string()
+    .required('Địa chỉ là bắt buộc'),
+  note: yup
+    .string()
+    .nullable(),
+  status: yup
+    .string()
+    .oneOf(['active', 'inactive'], 'Trạng thái không hợp lệ')
+    .default('active'),
 }).required();
 
-// Dữ liệu mẫu
-const sampleCustomers: Customer[] = [
-  {
-    id: '1',
-    customerCode: 'KH001',
-    fullName: 'Nguyễn Văn A',
-    phone: '0123456789',
-    address: 'Hà Nội',
-    note: 'Khách hàng VIP',
-    totalSpent: 15000000,
-    totalOrders: 5,
-    successfulOrders: 4,
-    canceledOrders: 1,
-  },
-  // Thêm dữ liệu mẫu khác nếu cần
-];
 
 const CustomersPage: React.FC = () => {
   const theme = useTheme();
-  const [customers, setCustomers] = useState<Customer[]>(sampleCustomers);
+  const [customers, setCustomers] = useState<Customer[]>([]);
   const [openDialog, setOpenDialog] = useState(false);
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(10);
+  const [totalCustomers, setTotalCustomers] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [viewCustomer, setViewCustomer] = useState<CustomerDetails | null>(null);
+  const [viewDialogOpen, setViewDialogOpen] = useState(false);
 
   const {
     control,
@@ -124,27 +133,45 @@ const CustomersPage: React.FC = () => {
   } = useForm({
     resolver: yupResolver(schema),
     defaultValues: {
-      customerCode: '',
       fullName: '',
       phone: '',
       address: '',
       note: '',
-      totalSpent: 0,
-      totalOrders: 0,
-      successfulOrders: 0,
-      canceledOrders: 0,
+      status: 'active'
     },
   });
 
-  // Lọc khách hàng theo tìm kiếm
-  const filteredCustomers = useMemo(() => {
-    return customers.filter(
-      (customer) =>
-        customer.fullName.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        customer.phone.includes(searchQuery) ||
-        customer.address.toLowerCase().includes(searchQuery.toLowerCase())
-    );
-  }, [customers, searchQuery]);
+  // Load customers
+  const loadCustomers = async () => {
+    try {
+      setLoading(true);
+      const response = await customerService.getCustomers(page, pageSize, searchQuery);
+      setCustomers(response.data.data);
+      setTotalCustomers(response.data.metadata.total);
+    } catch (error: any) {
+      showToast.error(error?.response?.data?.message || 'Không thể tải danh sách khách hàng');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadCustomers();
+  }, [page, pageSize, searchQuery]);
+
+  // Add function to load customer details
+  const loadCustomerDetails = async (id: string) => {
+    try {
+      setLoading(true);
+      const response = await customerService.getCustomerOrders(id);
+      setViewCustomer(response.data);
+      setViewDialogOpen(true);
+    } catch (error: any) {
+      showToast.error(error?.response?.data?.message || 'Không thể tải thông tin chi tiết khách hàng');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Định nghĩa cột cho DataGrid
   const columns: GridColDef[] = [
@@ -157,7 +184,7 @@ const CustomersPage: React.FC = () => {
           <Typography variant="body2" fontWeight="medium">
             {params.value}
           </Typography>
-          <CopyToClipboard 
+          <CopyToClipboard
             text={params.value}
             onCopy={() => showToast.success('Đã sao chép mã khách hàng')}
           >
@@ -230,19 +257,19 @@ const CustomersPage: React.FC = () => {
       renderCell: (params: GridRenderCellParams<any, Customer>) => (
         <Stack direction="row" spacing={1}>
           <Chip
-            label={`Tổng: ${params.row.totalOrders}`}
+            label={`Tổng: ${params.row.orderStats.total}`}
             size="small"
             color="primary"
             variant="outlined"
           />
           <Chip
-            label={`TC: ${params.row.successfulOrders}`}
+            label={`TC: ${params.row.orderStats.completed}`}
             size="small"
             color="success"
             variant="outlined"
           />
           <Chip
-            label={`Hủy: ${params.row.canceledOrders}`}
+            label={`Hủy: ${params.row.orderStats.cancelled}`}
             size="small"
             color="error"
             variant="outlined"
@@ -253,9 +280,23 @@ const CustomersPage: React.FC = () => {
     {
       field: 'actions',
       headerName: 'Thao tác',
-      width: 120,
+      width: 160,
       renderCell: (params: GridRenderCellParams<any, Customer>) => (
         <Stack direction="row" spacing={1}>
+          <Tooltip title="Xem chi tiết">
+            <IconButton
+              size="small"
+              onClick={() => loadCustomerDetails(params.row._id)}
+              sx={{
+                color: theme.palette.info.main,
+                '&:hover': {
+                  backgroundColor: alpha(theme.palette.info.main, 0.1),
+                },
+              }}
+            >
+              <VisibilityIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
           <Tooltip title="Chỉnh sửa">
             <IconButton
               size="small"
@@ -291,7 +332,13 @@ const CustomersPage: React.FC = () => {
 
   const handleEdit = (customer: Customer) => {
     setEditingCustomer(customer);
-    reset(customer);
+    reset({
+      fullName: customer.fullName,
+      phone: customer.phone,
+      address: customer.address,
+      note: customer.note || '',
+      status: customer.status || 'active'
+    });
     setOpenDialog(true);
   };
 
@@ -306,29 +353,233 @@ const CustomersPage: React.FC = () => {
     reset();
   };
 
-  const onSubmit = (data: any) => {
-    if (editingCustomer) {
-      // Cập nhật khách hàng
-      setCustomers(
-        customers.map((c) => (c.id === editingCustomer.id ? { ...data, id: c.id } : c))
-      );
-      showToast.success('Cập nhật khách hàng thành công!');
-    } else {
-      // Thêm khách hàng mới
-      setCustomers([...customers, { ...data, id: Date.now().toString() }]);
-      showToast.success('Thêm khách hàng thành công!');
+  const onSubmit = async (data: any) => {
+    try {
+      setLoading(true);
+      if (editingCustomer) {
+        // Update customer
+        const updateData = {
+          fullName: data.fullName,
+          phone: data.phone,
+          address: data.address,
+          note: data.note,
+          status: data.status,
+        };
+        const response = await customerService.updateCustomer(editingCustomer._id, updateData);
+        if (response.success) {
+          showToast.success('Cập nhật khách hàng thành công!');
+          loadCustomers(); // Reload the list
+          handleCloseDialog();
+        }
+      } else {
+        // Create new customer
+        await customerService.createCustomer(data);
+        showToast.success('Thêm khách hàng thành công!');
+        loadCustomers(); // Reload the list
+        handleCloseDialog();
+      }
+    } catch (error: any) {
+      showToast.error(error?.message || 'Thao tác thất bại');
+    } finally {
+      setLoading(false);
     }
-    handleCloseDialog();
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (editingCustomer) {
-      setCustomers(customers.filter((c) => c.id !== editingCustomer.id));
-      showToast.success('Xóa khách hàng thành công!');
-      setDeleteConfirmOpen(false);
-      setEditingCustomer(null);
+      try {
+        setLoading(true);
+        await customerService.deleteCustomer(editingCustomer._id);
+        showToast.success('Xóa khách hàng thành công!');
+        loadCustomers(); // Reload the list
+        setDeleteConfirmOpen(false);
+        setEditingCustomer(null);
+      } catch (error: any) {
+        showToast.error(error?.response?.data?.message || 'Không thể xóa khách hàng');
+      } finally {
+        setLoading(false);
+      }
     }
   };
+
+  // Add Customer Details Dialog
+  const CustomerDetailsDialog = () => (
+    <Dialog
+      open={viewDialogOpen}
+      onClose={() => setViewDialogOpen(false)}
+      maxWidth="md"
+      fullWidth
+      TransitionComponent={Grow}
+    >
+      <DialogTitle>
+        <Stack direction="row" alignItems="center" spacing={1}>
+          <VisibilityIcon color="primary" />
+          <Typography variant="h6">Chi tiết khách hàng</Typography>
+        </Stack>
+      </DialogTitle>
+      <DialogContent dividers>
+        {viewCustomer && (
+          <Box>
+            {/* Thông tin cơ bản */}
+            <Card sx={{ mb: 3, p: 3 }}>
+              <Grid container spacing={3}>
+                <Grid item xs={12} sm={6}>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Mã khách hàng
+                      </Typography>
+                      <Typography variant="body1">{viewCustomer.customerCode}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Họ và tên
+                      </Typography>
+                      <Typography variant="body1">{viewCustomer.fullName}</Typography>
+                    </Box>
+                  </Stack>
+                </Grid>
+                <Grid item xs={12} sm={6}>
+                  <Stack spacing={2}>
+                    <Box>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Số điện thoại
+                      </Typography>
+                      <Typography variant="body1">{viewCustomer.phone}</Typography>
+                    </Box>
+                    <Box>
+                      <Typography variant="subtitle2" color="text.secondary">
+                        Tổng chi tiêu
+                      </Typography>
+                      <Typography variant="body1" color="success.main" fontWeight="bold">
+                        {new Intl.NumberFormat('vi-VN', {
+                          style: 'currency',
+                          currency: 'VND',
+                        }).format(viewCustomer.totalSpent)}
+                      </Typography>
+                    </Box>
+                  </Stack>
+                </Grid>
+              </Grid>
+            </Card>
+
+            {/* Thống kê đơn hàng */}
+            <Card sx={{ mb: 3, p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Thống kê đơn hàng
+              </Typography>
+              <Grid container spacing={2}>
+                <Grid item xs={12} sm={4}>
+                  <Card sx={{ p: 2, bgcolor: alpha(theme.palette.primary.main, 0.1) }}>
+                    <Stack direction="row" alignItems="center" spacing={2}>
+                      <TimelineIcon color="primary" />
+                      <Box>
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Tổng đơn hàng
+                        </Typography>
+                        <Typography variant="h6">{viewCustomer.orderStats.total}</Typography>
+                      </Box>
+                    </Stack>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Card sx={{ p: 2, bgcolor: alpha(theme.palette.success.main, 0.1) }}>
+                    <Stack direction="row" alignItems="center" spacing={2}>
+                      <SuccessIcon color="success" />
+                      <Box>
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Hoàn thành
+                        </Typography>
+                        <Typography variant="h6">{viewCustomer.orderStats.completed}</Typography>
+                      </Box>
+                    </Stack>
+                  </Card>
+                </Grid>
+                <Grid item xs={12} sm={4}>
+                  <Card sx={{ p: 2, bgcolor: alpha(theme.palette.error.main, 0.1) }}>
+                    <Stack direction="row" alignItems="center" spacing={2}>
+                      <CancelIcon color="error" />
+                      <Box>
+                        <Typography variant="subtitle2" color="text.secondary">
+                          Đã hủy
+                        </Typography>
+                        <Typography variant="h6">{viewCustomer.orderStats.cancelled}</Typography>
+                      </Box>
+                    </Stack>
+                  </Card>
+                </Grid>
+              </Grid>
+            </Card>
+
+            {/* Danh sách đơn hàng */}
+            <Card sx={{ p: 3 }}>
+              <Typography variant="h6" gutterBottom>
+                Đơn hàng gần đây
+              </Typography>
+              <Stack spacing={2}>
+                {viewCustomer.orders
+                  .sort((a, b) => new Date(b.orderDate).getTime() - new Date(a.orderDate).getTime())
+                  .map((order) => (
+                    <Card
+                      key={order.orderCode}
+                      sx={{
+                        p: 2,
+                        border: 1,
+                        borderColor: 'divider',
+                      }}
+                    >
+                      <Grid container spacing={2} alignItems="center">
+                        <Grid item xs={12} sm={3}>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Mã đơn hàng
+                          </Typography>
+                          <Typography variant="body2">{order.orderCode}</Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={3}>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Ngày đặt
+                          </Typography>
+                          <Typography variant="body2">
+                            {format(new Date(order.orderDate), 'dd/MM/yyyy HH:mm', { locale: vi })}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={3}>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Tổng tiền
+                          </Typography>
+                          <Typography variant="body2" color="success.main" fontWeight="bold">
+                            {new Intl.NumberFormat('vi-VN', {
+                              style: 'currency',
+                              currency: 'VND',
+                            }).format(order.total)}
+                          </Typography>
+                        </Grid>
+                        <Grid item xs={12} sm={3}>
+                          <Chip
+                            label={translateOrderStatus(order.status)}
+                            color={
+                              order.status === 'completed'
+                                ? 'success'
+                                : order.status === 'cancelled'
+                                  ? 'error'
+                                  : 'primary'
+                            }
+                            size="small"
+                          />
+                        </Grid>
+                      </Grid>
+                    </Card>
+                  ))}
+              </Stack>
+            </Card>
+          </Box>
+        )}
+      </DialogContent>
+      <DialogActions>
+        <Button onClick={() => setViewDialogOpen(false)}>Đóng</Button>
+      </DialogActions>
+    </Dialog>
+  );
 
   return (
     <Box>
@@ -390,16 +641,21 @@ const CustomersPage: React.FC = () => {
       {/* Data Grid */}
       <Card sx={{ height: 'calc(100vh - 300px)' }}>
         <DataGrid
-          rows={filteredCustomers}
+          rows={customers}
           columns={columns}
-          initialState={{
-            pagination: {
-              paginationModel: {
-                pageSize: 10,
-              },
-            },
-          }}
+          loading={loading}
+          getRowId={(row) => row._id}
+          rowCount={totalCustomers}
           pageSizeOptions={[10, 25, 50]}
+          paginationMode="server"
+          paginationModel={{
+            page: page - 1,
+            pageSize: pageSize,
+          }}
+          onPaginationModelChange={(model) => {
+            setPage(model.page + 1);
+            setPageSize(model.pageSize);
+          }}
           disableRowSelectionOnClick
           sx={{
             border: 'none',
@@ -430,21 +686,6 @@ const CustomersPage: React.FC = () => {
             <Grid container spacing={3}>
               <Grid item xs={12} sm={6}>
                 <Controller
-                  name="customerCode"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Mã khách hàng"
-                      fullWidth
-                      error={!!errors.customerCode}
-                      helperText={errors.customerCode?.message}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Controller
                   name="fullName"
                   control={control}
                   render={({ field }) => (
@@ -470,6 +711,25 @@ const CustomersPage: React.FC = () => {
                       error={!!errors.phone}
                       helperText={errors.phone?.message}
                     />
+                  )}
+                />
+              </Grid>
+              <Grid item xs={12} sm={6}>
+                <Controller
+                  name="status"
+                  control={control}
+                  render={({ field }) => (
+                    <TextField
+                      {...field}
+                      select
+                      label="Trạng thái"
+                      fullWidth
+                      error={!!errors.status}
+                      helperText={errors.status?.message}
+                    >
+                      <MenuItem value="active">Hoạt động</MenuItem>
+                      <MenuItem value="inactive">Không hoạt động</MenuItem>
+                    </TextField>
                   )}
                 />
               </Grid>
@@ -501,75 +761,6 @@ const CustomersPage: React.FC = () => {
                       rows={3}
                       error={!!errors.note}
                       helperText={errors.note?.message}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Controller
-                  name="totalSpent"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Tổng chi tiêu"
-                      fullWidth
-                      type="number"
-                      InputProps={{
-                        startAdornment: (
-                          <InputAdornment position="start">₫</InputAdornment>
-                        ),
-                      }}
-                      error={!!errors.totalSpent}
-                      helperText={errors.totalSpent?.message}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Controller
-                  name="totalOrders"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Tổng số đơn"
-                      fullWidth
-                      type="number"
-                      error={!!errors.totalOrders}
-                      helperText={errors.totalOrders?.message}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Controller
-                  name="successfulOrders"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Số đơn thành công"
-                      fullWidth
-                      type="number"
-                      error={!!errors.successfulOrders}
-                      helperText={errors.successfulOrders?.message}
-                    />
-                  )}
-                />
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Controller
-                  name="canceledOrders"
-                  control={control}
-                  render={({ field }) => (
-                    <TextField
-                      {...field}
-                      label="Số đơn hủy"
-                      fullWidth
-                      type="number"
-                      error={!!errors.canceledOrders}
-                      helperText={errors.canceledOrders?.message}
                     />
                   )}
                 />
@@ -616,6 +807,9 @@ const CustomersPage: React.FC = () => {
           </Button>
         </DialogActions>
       </Dialog>
+
+      {/* Add CustomerDetailsDialog */}
+      <CustomerDetailsDialog />
     </Box>
   );
 };

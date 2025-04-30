@@ -2,18 +2,21 @@ import { createTheme, alpha } from '@mui/material/styles';
 
 declare module '@mui/material/styles' {
   interface Palette {
-    neutral: {
-      main: string;
-      darker: string;
-      lighter: string;
-    };
+    neutral: Palette['primary'];
   }
   interface PaletteOptions {
-    neutral?: {
-      main: string;
-      darker: string;
-      lighter: string;
-    };
+    neutral: PaletteOptions['primary'];
+  }
+  interface PaletteColor {
+    lighter?: string;
+    darker?: string;
+  }
+  interface SimplePaletteColorOptions {
+    lighter?: string;
+    darker?: string;
+  }
+  interface TypeBackground {
+    neutral?: string;
   }
 }
 
@@ -46,8 +49,7 @@ const theme = createTheme({
     },
     neutral: {
       main: '#6B7280',
-      darker: '#374151',
-      lighter: '#E5E7EB',
+      contrastText: '#FFFFFF',
     },
     background: {
       default: '#F9FAFB',

@@ -16,6 +16,8 @@ import { motion } from 'framer-motion';
 import { showToast } from '@/components/common/Toast';
 import { Link } from 'react-router-dom';
 import { ArrowBack, Email } from '@mui/icons-material';
+import { authService } from '@/services/authService';
+import { useState } from 'react';
 
 interface ForgotPasswordFormInputs {
   email: string;
@@ -31,6 +33,7 @@ const schema = yup.object({
 const ForgotPasswordPage: React.FC = () => {
   const theme = useTheme();
   const [submitted, setSubmitted] = React.useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   const {
     register,
@@ -43,10 +46,17 @@ const ForgotPasswordPage: React.FC = () => {
 
   const email = watch('email');
 
-  const onSubmit = (data: ForgotPasswordFormInputs) => {
-    console.log(data);
-    setSubmitted(true);
-    showToast.success('Đã gửi email khôi phục mật khẩu!');
+  const onSubmit = async (data: ForgotPasswordFormInputs) => {
+    try {
+      setIsLoading(true);
+      await authService.forgotPassword({ email: data.email });
+      setSubmitted(true);
+      showToast.success('Đã gửi email khôi phục mật khẩu!');
+    } catch (error: any) {
+      showToast.error(error?.response?.data?.message || 'Không thể gửi email khôi phục mật khẩu');
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const containerVariants = {
@@ -173,6 +183,7 @@ const ForgotPasswordPage: React.FC = () => {
                     size="large"
                     type="submit"
                     variant="contained"
+                    disabled={isLoading}
                     sx={{
                       background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
                       boxShadow: `0 8px 16px ${alpha(
@@ -190,7 +201,7 @@ const ForgotPasswordPage: React.FC = () => {
                       },
                     }}
                   >
-                    Gửi liên kết khôi phục
+                    {isLoading ? 'Đang gửi...' : 'Gửi liên kết khôi phục'}
                   </Button>
 
                   <Link

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from "react";
 import { Link, useNavigate, useLocation } from "react-router-dom";
 import { ROUTE_PATHS } from "@/routes/config";
+import { authService } from "@/services/authService";
 import {
   Box,
   Drawer,
@@ -91,9 +92,23 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   const [notificationAnchor, setNotificationAnchor] =
     useState<null | HTMLElement>(null);
   const [searchValue, setSearchValue] = useState("");
+  const [userProfile, setUserProfile] = useState(authService.getCurrentUser());
 
   // Hiệu ứng hover cho các menu items
   const [hoveredItem, setHoveredItem] = useState<string | null>(null);
+
+  useEffect(() => {
+    const fetchUserProfile = async () => {
+      try {
+        const profile = await authService.getProfile();
+        setUserProfile(profile);
+      } catch (error) {
+        console.error("Không thể lấy thông tin người dùng:", error);
+      }
+    };
+
+    fetchUserProfile();
+  }, []);
 
   const handleDrawerToggle = () => {
     setOpen(!open);
@@ -116,7 +131,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
+    authService.logout();
     navigate(ROUTE_PATHS.AUTH.LOGIN);
   };
 
@@ -233,8 +248,7 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
       {/* Sidebar */}
       <MotionDrawer
         variant="permanent"
-        animate={open ? "open" : "closed"}
-        variants={sidebarVariants}
+        open={open}
         sx={{
           "& .MuiDrawer-paper": {
             position: "relative",
@@ -272,15 +286,14 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
             noWrap
             component="div"
             sx={{
-              background: `linear-gradient(45deg, ${
-                theme.palette.common.white
-              }, ${alpha(theme.palette.primary.light, 0.9)})`,
+              background: `linear-gradient(45deg, ${theme.palette.common.white
+                }, ${alpha(theme.palette.primary.light, 0.9)})`,
               WebkitBackgroundClip: "text",
               WebkitTextFillColor: "transparent",
               fontWeight: "bold",
             }}
           >
-            {open ? "Wedding Management" : "WM"}
+            {open ? "Hệ thống quản lý trang phục" : "WM"}
           </Typography>
         </Toolbar>
         <Divider sx={{ borderColor: alpha(theme.palette.common.white, 0.1) }} />
@@ -358,42 +371,22 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           ))}
         </List>
       </MotionDrawer>
-
-      {/* Main Content */}
-      {/* <Box
-        component={motion.div}
-        animate={open ? 'open' : 'closed'}
+      <motion.div
+        // animate={open ? "open" : "closed"}
         variants={contentVariants}
-        sx={{
+        style={{
           flexGrow: 1,
-          p: 3,
-          mt: 8,
+          padding: theme.spacing(3),
+          marginTop: theme.spacing(8),
           backgroundColor: alpha(theme.palette.primary.light, 0.02),
-          transition: theme.transitions.create(['width', 'margin'], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.enteringScreen,
-          }),
+          // transition: theme.transitions.create(["width", "margin"], {
+          //   easing: theme.transitions.easing.sharp,
+          //   duration: theme.transitions.duration.enteringScreen,
+          // }),
         }}
       >
         {children}
-      </Box> */}
-
-      <Box
-        animate={open ? "open" : "closed"}
-        variants={contentVariants}
-        sx={{
-          flexGrow: 1,
-          p: 3,
-          mt: 8,
-          backgroundColor: alpha(theme.palette.primary.light, 0.02),
-          transition: theme.transitions.create(["width", "margin"], {
-            easing: theme.transitions.easing.sharp,
-            duration: theme.transitions.duration.enteringScreen,
-          }),
-        }}
-      >
-        {children}
-      </Box>
+      </motion.div>
 
       {/* Profile Menu */}
       <Menu
@@ -403,19 +396,34 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
         PaperProps={{
           sx: {
             mt: 1.5,
-            minWidth: 200,
+            minWidth: 250,
             borderRadius: 2,
             boxShadow: "0 4px 20px rgba(0,0,0,0.1)",
           },
         }}
       >
-        <Box sx={{ px: 2, py: 1 }}>
-          <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
-            Admin User
-          </Typography>
-          <Typography variant="body2" color="text.secondary">
-            admin@example.com
-          </Typography>
+        <Box sx={{ p: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+          <Avatar
+            src={userProfile?.avatar}
+            sx={{
+              width: 50,
+              height: 50,
+              bgcolor: theme.palette.primary.main,
+            }}
+          >
+            {userProfile?.fullName ? userProfile.fullName.charAt(0).toUpperCase() : 'A'}
+          </Avatar>
+          <Box>
+            <Typography variant="subtitle1" sx={{ fontWeight: "bold" }}>
+              {userProfile?.fullName || "Đang tải..."}
+            </Typography>
+            <Typography variant="body2" color="text.secondary">
+              {userProfile?.email || ""}
+            </Typography>
+            <Typography variant="caption" sx={{ color: theme.palette.primary.main }}>
+              {userProfile?.role === "admin" ? "Quản trị viên" : "Người dùng"}
+            </Typography>
+          </Box>
         </Box>
         <Divider />
         <MenuItem onClick={handleMenuClose}>
