@@ -79,7 +79,7 @@ export function OrderForm({ initialData, onSubmit, onCancel }: OrderFormProps) {
             const response = await customerService.getCustomers({ search, limit: 10 });
             setCustomers(
                 response.data.map((customer) => ({
-                    id: customer.id,
+                    id: customer._id,
                     label: `${customer.customerCode} - ${customer.fullName}`,
                 }))
             );

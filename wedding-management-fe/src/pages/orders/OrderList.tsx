@@ -25,7 +25,7 @@ import {
     InputLabel,
 } from '@mui/material';
 import { Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
-import { orderService } from '../../services/orderService';
+import orderService from '../../services/orderService';
 import type { Order } from '../../types/order';
 import { ORDER_STATUS } from '../../types/order';
 import { format } from 'date-fns';
@@ -53,8 +53,6 @@ export default function OrderList() {
                 limit,
                 search,
                 status: status as ORDER_STATUS,
-                sortBy: 'orderDate',
-                sortOrder: 'desc',
             });
             setOrders(response.data);
             setTotal(response.total);
@@ -77,7 +75,7 @@ export default function OrderList() {
     const handleDelete = async () => {
         if (!selectedOrder) return;
         try {
-            await orderService.deleteOrder(selectedOrder.id);
+            await orderService.deleteOrder(selectedOrder._id);
             setSuccessMessage('Order deleted successfully');
             fetchOrders();
             setOpenDelete(false);
@@ -86,13 +84,23 @@ export default function OrderList() {
         }
     };
 
-    const handleSave = async (data: Partial<Order>) => {
+    const handleSave = async (data: any) => {
         try {
             if (selectedOrder) {
-                await orderService.updateOrder(selectedOrder.id, data);
+                const orderData = {
+                    ...data,
+                    orderDate: data.orderDate instanceof Date ? data.orderDate.toISOString() : data.orderDate,
+                    returnDate: data.returnDate instanceof Date ? data.returnDate.toISOString() : data.returnDate
+                };
+                await orderService.updateOrder(selectedOrder._id, orderData);
                 setSuccessMessage('Order updated successfully');
             } else {
-                await orderService.createOrder(data as Omit<Order, 'id' | 'createdAt' | 'updatedAt'>);
+                const orderData = {
+                    ...data,
+                    orderDate: data.orderDate instanceof Date ? data.orderDate.toISOString() : data.orderDate,
+                    returnDate: data.returnDate instanceof Date ? data.returnDate.toISOString() : data.returnDate
+                };
+                await orderService.createOrder(orderData);
                 setSuccessMessage('Order created successfully');
             }
             setOpenForm(false);
@@ -175,7 +183,7 @@ export default function OrderList() {
                     </TableHead>
                     <TableBody>
                         {orders.map((order) => (
-                            <TableRow key={order.id}>
+                            <TableRow key={order._id}>
                                 <TableCell>{order.orderCode}</TableCell>
                                 <TableCell>{order.customerName}</TableCell>
                                 <TableCell>{format(new Date(order.orderDate), 'dd/MM/yyyy')}</TableCell>

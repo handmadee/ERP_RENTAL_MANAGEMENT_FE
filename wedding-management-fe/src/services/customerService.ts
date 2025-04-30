@@ -115,18 +115,42 @@ export interface CustomerDetails extends Customer {
 export class CustomerService {
     private readonly API_URL = '/customers';
 
-    async getCustomers(page: number = 1, limit: number = 10, search?: string) {
-        const params = new URLSearchParams({
-            page: page.toString(),
-            limit: limit.toString(),
-        });
+    async getCustomers(params: {
+        page?: number;
+        limit?: number;
+        search?: string;
+        sortBy?: string;
+        sortOrder?: string;
+    } = {}) {
+        const queryParams = new URLSearchParams();
 
-        if (search) {
-            params.append('search', search);
+        // Set default values if not provided
+        queryParams.append('page', (params.page || 1).toString());
+        queryParams.append('limit', (params.limit || 10).toString());
+
+        if (params.search) {
+            queryParams.append('search', params.search);
         }
 
-        const response = await api.get<CustomerResponse>(`${this.API_URL}?${params}`);
-        return response.data;
+        if (params.sortBy) {
+            queryParams.append('sortBy', params.sortBy);
+        }
+
+        if (params.sortOrder) {
+            queryParams.append('sortOrder', params.sortOrder);
+        }
+
+        const response = await api.get<ApiResponse<{
+            data: Customer[];
+            metadata: {
+                total: number;
+                page: number;
+                limit: number;
+                totalPages: number;
+            };
+        }>>(`${this.API_URL}?${queryParams}`);
+
+        return response.data.data;
     }
 
     async getCustomersWithStats(search?: string) {

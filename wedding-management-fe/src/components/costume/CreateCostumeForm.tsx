@@ -172,7 +172,7 @@ const CreateCostumeForm: React.FC<CreateCostumeFormProps> = ({ onSuccess }) => {
                 rules={[{ required: true, message: 'Please input price!' }]}
             >
                 <InputNumber<string>
-                    min={0}
+                    min="0"
                     style={{ width: '100%' }}
                     formatter={value => `$ ${value}`.replace(/\B(?=(\d{3})+(?!\d))/g, ',')}
                     parser={value => value!.replace(/\$\s?|(,*)/g, '')}

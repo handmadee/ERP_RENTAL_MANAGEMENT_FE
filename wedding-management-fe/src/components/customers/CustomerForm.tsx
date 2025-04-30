@@ -16,7 +16,7 @@ const customerSchema = z.object({
 type CustomerFormData = z.infer<typeof customerSchema>;
 
 interface CustomerFormProps {
-    initialData?: Customer | null;
+    initialData?: any | null;
     onSubmit: (data: CustomerFormData) => void;
     onCancel: () => void;
 }

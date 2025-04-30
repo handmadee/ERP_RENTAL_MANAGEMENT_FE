@@ -371,18 +371,18 @@ const DashboardLayout: React.FC<DashboardLayoutProps> = ({ children }) => {
           ))}
         </List>
       </MotionDrawer>
+
       <motion.div
-        // animate={open ? "open" : "closed"}
         variants={contentVariants}
+        transition={{
+          duration: 0.3,
+          ease: "easeInOut"
+        }}
         style={{
           flexGrow: 1,
           padding: theme.spacing(3),
           marginTop: theme.spacing(8),
           backgroundColor: alpha(theme.palette.primary.light, 0.02),
-          // transition: theme.transitions.create(["width", "margin"], {
-          //   easing: theme.transitions.easing.sharp,
-          //   duration: theme.transitions.duration.enteringScreen,
-          // }),
         }}
       >
         {children}

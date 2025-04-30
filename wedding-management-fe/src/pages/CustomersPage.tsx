@@ -145,9 +145,15 @@ const CustomersPage: React.FC = () => {
   const loadCustomers = async () => {
     try {
       setLoading(true);
-      const response = await customerService.getCustomers(page, pageSize, searchQuery);
-      setCustomers(response.data.data);
-      setTotalCustomers(response.data.metadata.total);
+      const response = await customerService.getCustomers({
+        page,
+        limit: pageSize,
+        search: searchQuery,
+        sortBy: 'createdAt',
+        sortOrder: 'desc'
+      });
+      setCustomers(response.data);
+      setTotalCustomers(response.metadata.total);
     } catch (error: any) {
       showToast.error(error?.response?.data?.message || 'Không thể tải danh sách khách hàng');
     } finally {
@@ -337,7 +343,7 @@ const CustomersPage: React.FC = () => {
       phone: customer.phone,
       address: customer.address,
       note: customer.note || '',
-      status: customer.status || 'active'
+      status: (customer.status || 'active') as 'active' | 'inactive'
     });
     setOpenDialog(true);
   };

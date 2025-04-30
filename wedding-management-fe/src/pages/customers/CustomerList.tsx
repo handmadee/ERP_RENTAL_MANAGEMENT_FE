@@ -21,8 +21,7 @@ import {
     Snackbar,
 } from '@mui/material';
 import { Edit as EditIcon, Delete as DeleteIcon, Add as AddIcon } from '@mui/icons-material';
-import { customerService } from '../../services/customerService';
-import type { Customer } from '../../types/customer';
+import { customerService, Customer } from '../../services/customerService';
 import { CustomerForm } from '../../components/customers/CustomerForm';
 
 export default function CustomerList() {
@@ -49,7 +48,7 @@ export default function CustomerList() {
                 sortOrder: 'desc',
             });
             setCustomers(response.data);
-            setTotal(response.total);
+            setTotal(response.metadata.total);
         } catch (err) {
             setError('Failed to fetch customers');
         } finally {
@@ -69,7 +68,7 @@ export default function CustomerList() {
     const handleDelete = async () => {
         if (!selectedCustomer) return;
         try {
-            await customerService.deleteCustomer(selectedCustomer.id);
+            await customerService.deleteCustomer(selectedCustomer._id);
             setSuccessMessage('Customer deleted successfully');
             fetchCustomers();
             setOpenDelete(false);
@@ -81,10 +80,15 @@ export default function CustomerList() {
     const handleSave = async (data: Partial<Customer>) => {
         try {
             if (selectedCustomer) {
-                await customerService.updateCustomer(selectedCustomer.id, data);
+                await customerService.updateCustomer(selectedCustomer._id, data);
                 setSuccessMessage('Customer updated successfully');
             } else {
-                await customerService.createCustomer(data as Omit<Customer, 'id' | 'createdAt' | 'updatedAt'>);
+                await customerService.createCustomer({
+                    fullName: data.fullName || '',
+                    phone: data.phone || '',
+                    address: data.address || '',
+                    note: data.note
+                });
                 setSuccessMessage('Customer created successfully');
             }
             setOpenForm(false);
@@ -137,7 +141,7 @@ export default function CustomerList() {
                     </TableHead>
                     <TableBody>
                         {customers.map((customer) => (
-                            <TableRow key={customer.id}>
+                            <TableRow key={customer._id}>
                                 <TableCell>{customer.customerCode}</TableCell>
                                 <TableCell>{customer.fullName}</TableCell>
                                 <TableCell>{customer.phone}</TableCell>
