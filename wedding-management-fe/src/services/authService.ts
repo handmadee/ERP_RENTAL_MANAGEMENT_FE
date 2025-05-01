@@ -24,6 +24,7 @@ export interface ResetPasswordDto {
 export interface ChangePasswordDto {
     currentPassword: string;
     newPassword: string;
+    confirmPassword: string;
 }
 
 export interface UpdateProfileDto {
@@ -292,6 +293,11 @@ class AuthService {
         return response.data.data;
     }
 
+    async updatePasswordInSettings(data: ChangePasswordDto): Promise<any> {
+        const response = await api.post(`${this.API_URL}/forgot-password-by-admin`, data);
+        return response.data;
+    }
+
     async updateNotificationSettings(notifications: NotificationSettings): Promise<Settings> {
         return this.updateSettings({ notifications });
     }
@@ -407,6 +413,7 @@ class AuthService {
         sessionStorage.removeItem(this.TOKEN_KEY);
         sessionStorage.removeItem(this.REFRESH_TOKEN_KEY);
     }
+
 
     /**
      * Completely clear all user-related data from storage

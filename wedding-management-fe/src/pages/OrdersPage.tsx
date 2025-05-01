@@ -28,6 +28,9 @@ import {
   Alert,
   ListItemIcon,
   ListItemText,
+  ToggleButtonGroup,
+  ToggleButton,
+  Divider,
 } from '@mui/material';
 import {
   Search as SearchIcon,
@@ -48,6 +51,10 @@ import {
   LocalShipping,
   Cancel,
   AssignmentTurnedIn,
+  CalendarViewDay,
+  CalendarViewWeek,
+  CalendarViewMonth,
+  CalendarToday,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { showToast } from '@/components/common/Toast';
@@ -320,10 +327,14 @@ const convertToUpdateDTO = (order: DialogOrder): any => {
 // Add a request cache to prevent duplicate requests
 const ordersCache = new Map();
 
+// Define the timeframe enum type
+type TimeframeType = 'daily' | 'weekly' | 'monthly' | 'yearly';
+
 const OrdersPage: React.FC = () => {
   const theme = useTheme();
   const [searchTerm, setSearchTerm] = useState('');
   const [statusFilter, setStatusFilter] = useState<ORDER_STATUS | null>(null);
+  const [timeframeFilter, setTimeframeFilter] = useState<TimeframeType>('monthly');
   const [page, setPage] = useState(0);
   const [rowsPerPage, setRowsPerPage] = useState(5);
   const [filterAnchorEl, setFilterAnchorEl] = useState<null | HTMLElement>(null);
@@ -396,8 +407,8 @@ const OrdersPage: React.FC = () => {
   const fetchStats = async () => {
     try {
       setStatsLoading(true);
-      const response = await orderService.getOrderStats();
-      console.log("🚀 ~ fetchStats ~ response:", response)
+      const response = await orderService.getOrderStats({ timeframe: timeframeFilter });
+      console.log("🚀 ~ fetchStats ~ response V1::", response)
       if (response) {
         setStats(response);
       }
@@ -415,7 +426,7 @@ const OrdersPage: React.FC = () => {
 
   useEffect(() => {
     fetchStats();
-  }, []);
+  }, [timeframeFilter]);
 
   const handleChangePage = (event: unknown, newPage: number) => {
     setPage(newPage);
@@ -612,6 +623,15 @@ const OrdersPage: React.FC = () => {
     }
   };
 
+  const handleTimeframeChange = (
+    event: React.MouseEvent<HTMLElement>,
+    newTimeframe: TimeframeType | null,
+  ) => {
+    if (newTimeframe !== null) {
+      setTimeframeFilter(newTimeframe);
+    }
+  };
+
   return (
     <Box sx={{ py: 3 }}>
       <motion.div
@@ -639,6 +659,40 @@ const OrdersPage: React.FC = () => {
           >
             Tạo đơn hàng
           </Button>
+        </Stack>
+
+        <Stack
+          direction="row"
+          spacing={2}
+          alignItems="center"
+          justifyContent="space-between"
+          mb={3}
+        >
+          <Typography variant="h6">Thống kê đơn hàng</Typography>
+          <ToggleButtonGroup
+            value={timeframeFilter}
+            exclusive
+            onChange={handleTimeframeChange}
+            aria-label="timeframe filter"
+            size="small"
+          >
+            <ToggleButton value="daily" aria-label="daily">
+              <CalendarViewDay fontSize="small" sx={{ mr: 0.5 }} />
+              Ngày
+            </ToggleButton>
+            <ToggleButton value="weekly" aria-label="weekly">
+              <CalendarViewWeek fontSize="small" sx={{ mr: 0.5 }} />
+              Tuần
+            </ToggleButton>
+            <ToggleButton value="monthly" aria-label="monthly">
+              <CalendarViewMonth fontSize="small" sx={{ mr: 0.5 }} />
+              Tháng
+            </ToggleButton>
+            <ToggleButton value="yearly" aria-label="yearly">
+              <CalendarToday fontSize="small" sx={{ mr: 0.5 }} />
+              Năm
+            </ToggleButton>
+          </ToggleButtonGroup>
         </Stack>
 
         <Grid container spacing={3} mb={3}>

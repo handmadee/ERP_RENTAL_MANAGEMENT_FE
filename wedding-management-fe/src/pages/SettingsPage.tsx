@@ -17,6 +17,8 @@ import {
   alpha,
   CircularProgress,
   MenuItem,
+  InputAdornment,
+  IconButton,
 } from '@mui/material';
 import {
   Facebook,
@@ -33,6 +35,8 @@ import {
   Edit,
   Add,
   Save,
+  Visibility,
+  VisibilityOff,
 } from '@mui/icons-material';
 import { motion } from 'framer-motion';
 import { useFormik } from 'formik';
@@ -131,6 +135,9 @@ const SettingsPage: React.FC = () => {
   const [avatarLoading, setAvatarLoading] = useState(false);
   const [settings, setSettings] = useState<Settings | null>(null);
   const [lastLoginTime, setLastLoginTime] = useState<Date | null>(null);
+  const [showCurrentPassword, setShowCurrentPassword] = useState(false);
+  const [showNewPassword, setShowNewPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const profileFormik = useFormik<ProfileFormValues>({
     initialValues: {
@@ -168,9 +175,10 @@ const SettingsPage: React.FC = () => {
     onSubmit: async (values) => {
       try {
         setIsPasswordLoading(true);
-        await authService.changePassword({
+        await authService.updatePasswordInSettings({
           currentPassword: values.currentPassword,
           newPassword: values.newPassword,
+          confirmPassword: values.confirmPassword,
         });
         showToast.success('Đổi mật khẩu thành công!');
         passwordFormik.resetForm();
@@ -532,6 +540,107 @@ const SettingsPage: React.FC = () => {
                     }
                   }}
                 />
+              </Card>
+
+              <Typography variant="h6" sx={{ mb: 3, mt: 4 }}>
+                Đổi mật khẩu
+              </Typography>
+
+              <Card sx={{ p: 3 }}>
+                <Grid container spacing={3}>
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Mật khẩu hiện tại"
+                      name="currentPassword"
+                      type={showCurrentPassword ? 'text' : 'password'}
+                      value={passwordFormik.values.currentPassword}
+                      onChange={passwordFormik.handleChange}
+                      error={passwordFormik.touched.currentPassword && Boolean(passwordFormik.errors.currentPassword)}
+                      helperText={passwordFormik.touched.currentPassword && passwordFormik.errors.currentPassword}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label="toggle password visibility"
+                              onClick={() => setShowCurrentPassword(!showCurrentPassword)}
+                              edge="end"
+                            >
+                              {showCurrentPassword ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          </InputAdornment>
+                        )
+                      }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Mật khẩu mới"
+                      name="newPassword"
+                      type={showNewPassword ? 'text' : 'password'}
+                      value={passwordFormik.values.newPassword}
+                      onChange={passwordFormik.handleChange}
+                      error={passwordFormik.touched.newPassword && Boolean(passwordFormik.errors.newPassword)}
+                      helperText={passwordFormik.touched.newPassword && passwordFormik.errors.newPassword}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label="toggle password visibility"
+                              onClick={() => setShowNewPassword(!showNewPassword)}
+                              edge="end"
+                            >
+                              {showNewPassword ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          </InputAdornment>
+                        )
+                      }}
+                    />
+                  </Grid>
+
+                  <Grid item xs={12}>
+                    <TextField
+                      fullWidth
+                      label="Nhập lại mật khẩu mới"
+                      name="confirmPassword"
+                      type={showConfirmPassword ? 'text' : 'password'}
+                      value={passwordFormik.values.confirmPassword}
+                      onChange={passwordFormik.handleChange}
+                      error={passwordFormik.touched.confirmPassword && Boolean(passwordFormik.errors.confirmPassword)}
+                      helperText={passwordFormik.touched.confirmPassword && passwordFormik.errors.confirmPassword}
+                      InputProps={{
+                        endAdornment: (
+                          <InputAdornment position="end">
+                            <IconButton
+                              aria-label="toggle password visibility"
+                              onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                              edge="end"
+                            >
+                              {showConfirmPassword ? <VisibilityOff /> : <Visibility />}
+                            </IconButton>
+                          </InputAdornment>
+                        )
+                      }}
+                    />
+                  </Grid>
+                </Grid>
+
+                <Box mt={3} display="flex" justifyContent="flex-end">
+                  <Button
+                    type="submit"
+                    variant="contained"
+                    startIcon={isPasswordLoading ? <CircularProgress size={20} /> : <Save />}
+                    disabled={isPasswordLoading}
+                    sx={{
+                      background: `linear-gradient(45deg, ${theme.palette.primary.main}, ${theme.palette.primary.light})`,
+                      boxShadow: `0 8px 16px ${alpha(theme.palette.primary.main, 0.24)}`,
+                    }}
+                  >
+                    {isPasswordLoading ? 'Đang xử lý...' : 'Đổi mật khẩu'}
+                  </Button>
+                </Box>
               </Card>
             </Box>
           </TabPanel>

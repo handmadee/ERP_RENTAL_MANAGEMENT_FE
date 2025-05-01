@@ -74,7 +74,13 @@ const orderService = {
         timeframe?: 'daily' | 'weekly' | 'monthly' | 'yearly';
     }): Promise<OrderStats> => {
         try {
-            const response = await api.get(`${BASE_URL}/stats/overview`, { params });
+            const response = await api.get(`${BASE_URL}/stats/overview`, {
+                params: {
+                    ...params,
+                    timeframe: params?.timeframe || 'monthly'
+                }
+            });
+
             return response.data.data;
         } catch (error: any) {
             throw new Error(error.response?.data?.message || 'Có lỗi xảy ra khi lấy thống kê đơn hàng');
